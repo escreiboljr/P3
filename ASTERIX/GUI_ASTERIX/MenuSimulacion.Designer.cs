@@ -73,6 +73,7 @@
             pictureBoxContorles = new PictureBox();
             pictureBox7 = new PictureBox();
             panelLeyendaHeatmap = new Panel();
+            labeldensidad = new Label();
             labelHeatmap100 = new Label();
             labelHeatmap75 = new Label();
             labelHeatmap50 = new Label();
@@ -80,7 +81,6 @@
             labelHeatmap0 = new Label();
             pictureBoxEscalaHeatmap = new PictureBox();
             labelDensTraf = new Label();
-            labeldensidad = new Label();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)trackBarVelSimulacion).BeginInit();
             ((System.ComponentModel.ISupportInitialize)dataGridAviones).BeginInit();
@@ -552,10 +552,20 @@
             panelLeyendaHeatmap.Controls.Add(labelHeatmap0);
             panelLeyendaHeatmap.Controls.Add(pictureBoxEscalaHeatmap);
             panelLeyendaHeatmap.Controls.Add(labelDensTraf);
-            panelLeyendaHeatmap.Location = new Point(339, 394);
+            panelLeyendaHeatmap.Location = new Point(692, 394);
             panelLeyendaHeatmap.Name = "panelLeyendaHeatmap";
             panelLeyendaHeatmap.Size = new Size(260, 100);
             panelLeyendaHeatmap.TabIndex = 43;
+            // 
+            // labeldensidad
+            // 
+            labeldensidad.AutoSize = true;
+            labeldensidad.ForeColor = Color.White;
+            labeldensidad.Location = new Point(77, 78);
+            labeldensidad.Name = "labeldensidad";
+            labeldensidad.Size = new Size(104, 15);
+            labeldensidad.TabIndex = 7;
+            labeldensidad.Text = "Aviones/cuadrado";
             // 
             // labelHeatmap100
             // 
@@ -630,16 +640,6 @@
             labelDensTraf.Size = new Size(115, 15);
             labelDensTraf.TabIndex = 0;
             labelDensTraf.Text = "Densidad de trafico";
-            // 
-            // labeldensidad
-            // 
-            labeldensidad.AutoSize = true;
-            labeldensidad.ForeColor = Color.White;
-            labeldensidad.Location = new Point(77, 78);
-            labeldensidad.Name = "labeldensidad";
-            labeldensidad.Size = new Size(104, 15);
-            labeldensidad.TabIndex = 7;
-            labeldensidad.Text = "Aviones/cuadrado";
             // 
             // MenuSimulacion
             // 
