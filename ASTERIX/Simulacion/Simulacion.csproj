@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DatosBinario\Archivos.csproj" />
+    <ProjectReference Include="..\P3\P3.csproj" />
   </ItemGroup>
 
 </Project>

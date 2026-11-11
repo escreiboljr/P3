@@ -24,7 +24,9 @@ namespace Archivos
             bool eliminarGround,
             bool filtrarAltura,
             double alturaMin,
-            double alturaMax)
+            double alturaMax,
+            bool filtrarP3 = false,
+HashSet<Mensaje> mensajesP3 = null)
         {
             IEnumerable<Mensaje> listaFiltrada = listaOriginal;
 
@@ -81,7 +83,14 @@ namespace Archivos
                     alturaMin,
                     alturaMax);
             }
-
+            // Conservar únicamente los vuelos del P3
+            if (filtrarP3)
+            {
+                listaFiltrada = listaFiltrada.Where(m =>
+                    m.categoria == 48 &&
+                    mensajesP3 != null &&
+                    mensajesP3.Contains(m));
+            }
             // descartar los mensajes no válidos y devolver la lista filtrada
             listaFiltrada = FiltrarMensajesInvalidos(listaFiltrada);
             return listaFiltrada.ToList();
@@ -352,5 +361,16 @@ namespace Archivos
         {
             return FiltrarMensajesInvalidos(mensajes).ToList();
         }
+        public List<Mensaje> FiltrarDespeguesP3(
+            List<Mensaje> mensajes,
+            HashSet<Mensaje> mensajesP3)
+        {
+            return mensajes
+                .Where(m =>
+                    m.categoria == 48 &&
+                    mensajesP3.Contains(m))
+                .ToList();
+        }
+
     }
 }

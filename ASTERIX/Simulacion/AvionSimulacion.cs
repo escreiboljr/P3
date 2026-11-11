@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Archivos;
+using P3;
 namespace Simulacion
 {
     public class AvionSimulacion
@@ -29,6 +30,15 @@ namespace Simulacion
         public double altitudPresionFt { get; set; } = double.NaN;
         public double altitudQNHFt { get; set; } = double.NaN;
         public double qnhUtilizado { get; set; } = double.NaN;
+
+        // Atributos del Proyecto 3
+        public PlanVueloP3 planVuelo { get; set; }
+        public AvionSimulacion avionPrecedente { get; set; }
+        public List<Mensaje> mensajesRadarP3 { get; set; }
+            = new List<Mensaje>();
+        public double separacionTWR { get; set; } = double.NaN;
+        public double separacionMinimaTMA { get; set; } = double.NaN;
+        public double tiempoSeparacionMinimaTMA { get; set; } = double.NaN;
 
         public AvionSimulacion()
         {

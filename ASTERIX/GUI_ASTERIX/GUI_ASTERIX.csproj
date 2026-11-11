@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="GMap.NET.WinForms" Version="2.1.7" />
   </ItemGroup>
 
@@ -16,6 +17,7 @@
     <ProjectReference Include="..\DatosBinario\Archivos.csproj" />
     <ProjectReference Include="..\DatosDecod21\DatosDecod21.csproj" />
     <ProjectReference Include="..\DatosDecod\DatosDecod48.csproj" />
+    <ProjectReference Include="..\P3\P3.csproj" />
     <ProjectReference Include="..\Simulacion\Simulacion.csproj" />
   </ItemGroup>
 

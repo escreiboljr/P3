@@ -17,6 +17,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Drawing;
 using System.Windows.Forms;
+using P3;
+using MultiCAT6.Utils;
 
 namespace GUI_ASTERIX
 {
@@ -31,7 +33,10 @@ namespace GUI_ASTERIX
         private List<Mensaje> ListaMensajesFiltrados = new List<Mensaje>();
         private List<AvionSimulacion> AvionesActuales = new List<AvionSimulacion>();
         private List<AvionSimulacion> MensajesActuales = new List<AvionSimulacion>();
-
+        private List<PlanVueloP3> planesVueloP3 = new List<PlanVueloP3>();
+        private List<AvionSimulacion> avionesP3 = new List<AvionSimulacion>();
+        private bool mostrarSoloAvionesP3 = false;
+        private HashSet<Mensaje> mensajesVisiblesP3 = new HashSet<Mensaje>();
         private bool Reproduciendo = false;
         private GMapOverlay capaAviones;
         private GMapOverlay capaTrayectorias;
@@ -184,6 +189,8 @@ namespace GUI_ASTERIX
 
             ConfigurarScrollBarDataGrid();
             EstiloDataGrid.PersonalizarDataGrid(dataGridAviones);
+
+            this.Shown += MenuSimulacion_Shown;
         }
 
         private void AjustarDataGrid()
@@ -965,9 +972,10 @@ namespace GUI_ASTERIX
         }
 
 
+
         private async void cargaDatosrToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            // abrir el explorador para seleccionar uno o varios archivos asterix
+            // Abrir el explorador para seleccionar archivos ASTERIX
             using (OpenFileDialog explorador = new OpenFileDialog())
             {
                 explorador.Multiselect = true;
@@ -976,112 +984,141 @@ namespace GUI_ASTERIX
                 if (explorador.ShowDialog() != DialogResult.OK)
                     return;
 
-                // guardar las rutas de los archivos seleccionados
-                string[] archivos = explorador.FileNames;
-
-                try
-                {
-                    List<Mensaje> nuevosMensajes;
-
-                    // leer y decodificar los archivos mostrando el progreso de carga
-                    using (FormCargando cargando = new FormCargando())
-                    {
-                        cargando.Show(this);
-                        cargando.ActualizarProgreso(0);
-
-                        // actualizar la barra de progreso
-                        IProgress<int> progreso = new Progress<int>(porcentaje =>
-                        {
-                            if (!cargando.IsDisposed)
-                                cargando.ActualizarProgreso(porcentaje);
-                        });
-
-                        try
-                        {
-                            nuevosMensajes = await Task.Run(() =>
-                            {
-                                LeerDatos lector = new LeerDatos();
-
-                                // combinar los archivos eliminando los solapamientos
-                                // y decodificar los mensajes resultantes
-                                return lector.DatosProcesadosMultiples(
-                                    archivos,
-                                    progreso
-                                );
-                            });
-                        }
-                        finally
-                        {
-                            cargando.Close();
-                        }
-                    }
-
-                    // comprobar que los archivos contienen mensajes válidos
-                    if (nuevosMensajes == null || nuevosMensajes.Count == 0)
-                    {
-                        MessageBox.Show(
-                            "Los archivos seleccionados no contienen mensajes válidos."
-                        );
-                        return;
-                    }
-
-                    // detener la simulación anterior
-                    timerSimulacion.Stop();
-                    Reproduciendo = false;
-
-                    pictureBox1.Image =
-                        Properties.Resources.botonReproducir;
-
-                    // eliminar los datos de la simulación anterior
-                    AvionesActuales.Clear();
-                    MensajesActuales.Clear();
-
-                    avionesTrayectoriaSeleccionados.Clear();
-
-                    dataGridAviones.Rows.Clear();
-
-                    capaAviones.Markers.Clear();
-                    capaTrayectorias.Routes.Clear();
-
-                    // guardar los nuevos mensajes y restablecer los filtros
-                    RestablecerFiltros();
-
-                    ListaMensajes = nuevosMensajes;
-
-                    Filtros gestorFiltros = new Filtros();
-
-                    ListaMensajesFiltrados =
-                        gestorFiltros.PrepararMensajes(ListaMensajes);
-
-                    // preparar los datos del mapa de calor
-                    InvalidarHeatmap();
-                    PrepararPuntosHeatmap();
-
-                    // reiniciar el tiempo al comienzo de los archivos
-                    TiempoActual = 0;
-                    BuscarTiempoInicial();
-
-                    TimeSpan hora = TimeSpan.FromSeconds(TiempoActual);
-                    ActualizarHoraTextBox();
-
-                    // actualizar la simulación y los elementos visuales
-                    ActualizarAviones();
-                    ActualizarDataGrid();
-                    ActualizarMapa();
-                    MostrarTrayectorias();
-
-                    ActualizarHeatmapDinamico(true);
-                }
-                
-                catch (Exception ex)
-                {
-                    // mostrar un mensaje si se produce un error durante la carga
-                    MessageBox.Show(
-                        "Error al cargar los archivos:\n" + ex.Message
-                    );
-                }
+                await CargarArchivosAsterix(explorador.FileNames);
             }
         }
+
+
+        // Cargar y procesar los archivos ASTERIX
+        private async Task CargarArchivosAsterix(string[] archivos)
+        {
+            try
+            {
+                List<Mensaje> nuevosMensajes;
+
+                // Leer y decodificar los archivos mostrando el progreso
+                using (FormCargando cargando = new FormCargando())
+                {
+                    cargando.Show(this);
+                    cargando.ActualizarProgreso(0);
+
+                    IProgress<int> progreso = new Progress<int>(porcentaje =>
+                    {
+                        if (!cargando.IsDisposed)
+                            cargando.ActualizarProgreso(porcentaje);
+                    });
+
+                    try
+                    {
+                        nuevosMensajes = await Task.Run(() =>
+                        {
+                            LeerDatos lector = new LeerDatos();
+
+                            // Combinar los archivos eliminando solapamientos
+                            // y decodificar los mensajes resultantes
+                            return lector.DatosProcesadosMultiples(
+                                archivos,
+                                progreso
+                            );
+                        });
+                    }
+                    finally
+                    {
+                        cargando.Close();
+                    }
+                }
+
+                // Comprobar que los archivos contienen mensajes válidos
+                if (nuevosMensajes == null || nuevosMensajes.Count == 0)
+                {
+                    MessageBox.Show(
+                        "Los archivos seleccionados no contienen mensajes válidos."
+                    );
+                    return;
+                }
+
+                // Detener la simulación anterior
+                timerSimulacion.Stop();
+                Reproduciendo = false;
+
+                pictureBox1.Image =
+                    Properties.Resources.botonReproducir;
+
+                // Eliminar los datos de la simulación anterior
+                AvionesActuales.Clear();
+                MensajesActuales.Clear();
+
+                avionesTrayectoriaSeleccionados.Clear();
+
+                dataGridAviones.Rows.Clear();
+
+                capaAviones.Markers.Clear();
+                capaTrayectorias.Routes.Clear();
+
+                // Guardar los nuevos mensajes y restablecer los filtros
+                RestablecerFiltros();
+
+                ListaMensajes = nuevosMensajes;
+                // Desactivar el filtro P3 al cambiar los datos radar
+                mostrarSoloAvionesP3 = false;
+                mensajesVisiblesP3.Clear();
+                avionesP3.Clear();
+
+                Filtros gestorFiltros = new Filtros();
+
+                ListaMensajesFiltrados =
+                    gestorFiltros.PrepararMensajes(ListaMensajes);
+
+                // Preparar los datos del mapa de calor
+                InvalidarHeatmap();
+                PrepararPuntosHeatmap();
+
+                // Reiniciar el tiempo al comienzo de los archivos
+                TiempoActual = 0;
+                BuscarTiempoInicial();
+
+                TimeSpan hora = TimeSpan.FromSeconds(TiempoActual);
+                ActualizarHoraTextBox();
+
+                // Actualizar la simulación y los elementos visuales
+                ActualizarAviones();
+                ActualizarDataGrid();
+                ActualizarMapa();
+                MostrarTrayectorias();
+
+                ActualizarHeatmapDinamico(true);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Error al cargar los archivos:\n" + ex.Message
+                );
+            }
+        }
+
+
+        private async void MenuSimulacion_Shown(object sender, EventArgs e)
+        {
+            // Ruta del archivo ASTERIX que queremos cargar automáticamente
+            string rutaArchivo = @"C:\Users\user\Desktop\asterix_radar.ast";
+
+            // Comprobar que existe
+            if (!File.Exists(rutaArchivo))
+            {
+                MessageBox.Show(
+                    "No se encuentra el archivo ASTERIX:\n" +
+                    rutaArchivo
+                );
+
+                return;
+            }
+
+            // Cargar automáticamente el archivo
+            await CargarArchivosAsterix(
+                new string[] { rutaArchivo }
+            );
+        }
+
 
         private void ActualizarDataGrid()
         {
@@ -1138,6 +1175,35 @@ namespace GUI_ASTERIX
 
             foreach (AvionSimulacion mensaje in MensajesActuales)
             {
+                // Filtrar los mensajes visibles cuando está activo el P3
+
+                if (mostrarSoloAvionesP3)
+                {
+                    // Solo mostrar detecciones radar CAT48
+                    if (!mensaje.detectadoRadar)
+                        continue;
+
+                    // Comprobar que corresponde a un vuelo del Excel
+                    bool esAvionP3 = avionesP3.Any(avion =>
+                        avion.planVuelo != null &&
+                        avion.mensajesRadarP3.Count > 0 &&
+
+                        string.Equals(
+                            avion.identificador?.Trim(),
+                            mensaje.identificador?.Trim(),
+                            StringComparison.OrdinalIgnoreCase) &&
+
+                        mensaje.ultimoTiempo >=
+                            Math.Max(0, avion.planVuelo.atot - 60) &&
+
+                        mensaje.ultimoTiempo <=
+                            Math.Min(86400, avion.planVuelo.atot + 1200)
+                    );
+
+                    if (!esAvionP3)
+                        continue;
+                }
+
                 if (!double.IsNaN(mensaje.latitud) &&
                     !double.IsNaN(mensaje.longitud))
                 {
@@ -1799,6 +1865,7 @@ namespace GUI_ASTERIX
 
                 PrepararPuntosHeatmap();
                 ActualizarHeatmapDinamico(true);
+                AplicarFiltroMensajesP3();
 
                 //MessageBox.Show("5 - terminado");
             }
@@ -1821,6 +1888,7 @@ namespace GUI_ASTERIX
             InvalidarHeatmap();
             PrepararPuntosHeatmap();
             ActualizarHeatmapDinamico(true);
+            AplicarFiltroMensajesP3();
 
             gMapControl1.Refresh();
         }
@@ -2735,5 +2803,796 @@ namespace GUI_ASTERIX
 
             labelHeatmap100.Text = maximo.ToString();
         }
+
+        //==============================================================================
+        //==============================================================================
+        //--------------------------PARTE DEL PROYECTO 3--------------------------------
+        //==============================================================================
+        //==============================================================================
+
+
+        private void cargarPlanDeVueloToolStripMenuItem_Click(
+            object sender, EventArgs e)
+        {
+            using (OpenFileDialog explorador = new OpenFileDialog())
+            {
+                explorador.Title = "Cargar planes de vuelo P3";
+                explorador.Filter = "Archivos Excel (*.xlsx)|*.xlsx";
+
+                if (explorador.ShowDialog() != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    // Cargar los planes de vuelo
+                    LectorPlanesVueloP3 lector =
+                        new LectorPlanesVueloP3();
+
+                    planesVueloP3 = lector.LeerExcel(
+                        explorador.FileName);
+
+                    // Asociar los planes y los precedentes
+                    AsignarPlanesVueloP3();
+                    AsignarAvionesPrecedentesP3();
+                    mensajesVisiblesP3 = avionesP3
+                        .SelectMany(a => a.mensajesRadarP3)
+                        .ToHashSet();
+
+                    mostrarSoloAvionesP3 = true;
+                    
+                    // Aplicar todos los filtros y reconstruir la simulación
+                    ActualizarFiltros();
+
+                    int separacionesCalculadas = 0;
+                    int separacionesNoCalculadas = 0;
+                    int minimasCalculadas = 0;
+
+                    string resultadoSeparaciones = "";
+
+                    foreach (AvionSimulacion avion in avionesP3
+                        .Where(a => a.mensajesRadarP3.Count > 0)
+                        .OrderBy(a => a.planVuelo.atot))
+                    {
+                        // Calcular separación TWR
+                        avion.separacionTWR = CalcularSeparacionTWRP3(avion);
+
+                        // Calcular separación mínima TMA
+                        avion.separacionMinimaTMA =
+                            CalcularSeparacionMinimaTMAP3(
+                                avion,
+                                out double tiempoMinimo,
+                                out int comparaciones,
+                                out double separacionFinal);
+
+                        avion.tiempoSeparacionMinimaTMA = tiempoMinimo;
+
+                        // Contadores
+                        if (double.IsFinite(avion.separacionTWR))
+                            separacionesCalculadas++;
+                        else
+                            separacionesNoCalculadas++;
+
+                        if (double.IsFinite(avion.separacionMinimaTMA))
+                            minimasCalculadas++;
+
+                        // Obtener el indicativo del precedente
+                        string precedente = avion.avionPrecedente != null
+                            ? avion.avionPrecedente.identificador
+                            : "NINGUNO";
+
+                        // Preparar resultados para mostrar
+                        string distanciaTWR = double.IsFinite(avion.separacionTWR)
+                            ? avion.separacionTWR.ToString("F3") + " NM"
+                            : "N/A";
+
+                        string distanciaTMA = double.IsFinite(avion.separacionMinimaTMA)
+                            ? avion.separacionMinimaTMA.ToString("F3") + " NM"
+                            : "N/A";
+
+                        string horaMinima = double.IsFinite(tiempoMinimo)
+                            ? TimeSpan.FromSeconds(tiempoMinimo)
+                                .ToString(@"hh\:mm\:ss")
+                            : "N/A";
+
+                        resultadoSeparaciones +=
+                            avion.identificador +
+                            " | TWR: " + distanciaTWR +
+                            " | TMA: " + distanciaTMA +
+                            " | Comparaciones: " + comparaciones +
+                            " | Última: " +
+                            (double.IsFinite(separacionFinal)
+                                ? separacionFinal.ToString("F3") + " NM"
+                                : "N/A") +
+                            "\n";
+                                            }
+
+                    MessageBox.Show(
+                        "Separaciones TWR calculadas: " +
+                        separacionesCalculadas +
+                        "\nSeparaciones TWR no calculadas: " +
+                        separacionesNoCalculadas +
+                        "\nSeparaciones mínimas TMA calculadas: " +
+                        minimasCalculadas +
+                        "\n\n" + resultadoSeparaciones,
+                        "Proyecto 3 - Separaciones TWR y TMA"
+                    );
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        "Error al cargar los planes de vuelo:\n" +
+                        ex.Message,
+                        "Proyecto 3"
+                    );
+                }
+            }
+        }
+
+        private void AsignarPlanesVueloP3()
+        {
+            avionesP3.Clear();
+
+            // Agrupar los mensajes CAT48 por indicativo.
+            // Utilizamos los mensajes ya decodificados del P2.
+            var mensajesPorIndicativo = ListaMensajes
+                .Where(m => m.categoria == 48 &&
+                            m.tira is TiraDatosDecod048)
+                .GroupBy(
+                    m => ((TiraDatosDecod048)m.tira)
+                            .AircrftIddent?.Trim() ?? "",
+                    StringComparer.OrdinalIgnoreCase
+                )
+                .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(m =>
+                        ((TiraDatosDecod048)m.tira).TimeOfDay)
+                        .ToList(),
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+            // Recorrer los planes del Excel
+            foreach (PlanVueloP3 plan in planesVueloP3)
+            {
+                AvionSimulacion avion = new AvionSimulacion
+                {
+                    identificador = plan.indicativo,
+                    planVuelo = plan
+                };
+
+                // Buscar mensajes con el mismo indicativo
+                if (mensajesPorIndicativo.TryGetValue(
+                    plan.indicativo.Trim(),
+                    out List<Mensaje> mensajes))
+                {
+                    // Ventana temporal provisional:
+                    // 60 s antes y 20 min después del ATOT
+                    double inicio = Math.Max(0, plan.atot - 60);
+                    double fin = Math.Min(86400, plan.atot + 1200);
+
+                    avion.mensajesRadarP3 = mensajes
+                        .Where(m =>
+                        {
+                            double tiempo =
+                                ((TiraDatosDecod048)m.tira).TimeOfDay;
+
+                            return double.IsFinite(tiempo) &&
+                                   tiempo >= inicio &&
+                                   tiempo <= fin;
+                        })
+                        .ToList();
+                }
+
+                // Conservar también los planes sin detecciones
+                avionesP3.Add(avion);
+            }
+        }
+
+        private void AsignarAvionesPrecedentesP3()
+        {
+            // Limpiar las relaciones anteriores
+            foreach (AvionSimulacion avion in avionesP3)
+            {
+                avion.avionPrecedente = null;
+            }
+
+            // Separar los despegues por pista
+            string[] pistas = { "24L", "06R" };
+
+            foreach (string pista in pistas)
+            {
+                // Obtener los aviones de esa pista
+                // y ordenarlos según su hora de despegue
+                List<AvionSimulacion> despegues = avionesP3
+                    .Where(a =>
+                        a.planVuelo != null &&
+                        a.planVuelo.pistaDespegue == pista &&
+                        double.IsFinite(a.planVuelo.atot))
+                    .OrderBy(a => a.planVuelo.atot)
+                    .ToList();
+
+                // Asignar a cada avión el despegue anterior
+                for (int i = 1; i < despegues.Count; i++)
+                {
+                    AvionSimulacion avionActual = despegues[i];
+                    AvionSimulacion avionAnterior = despegues[i - 1];
+
+                    avionActual.avionPrecedente = avionAnterior;
+                }
+            }
+        }
+
+        private Mensaje? BuscarPrimeraDeteccionTWRP3(
+            AvionSimulacion avion,
+            out double distanciaTWR,
+            bool exigirFueraDER = true)
+        {
+            distanciaTWR = double.NaN;
+
+            if (avion.planVuelo == null ||
+                avion.mensajesRadarP3.Count < 2)
+                return null;
+
+            string pista = avion.planVuelo.pistaDespegue;
+            double atot = avion.planVuelo.atot;
+
+            if ((pista != "24L" && pista != "06R") ||
+                !double.IsFinite(atot))
+                return null;
+
+            double inicio = Math.Max(0, atot - 60);
+            double fin = Math.Min(86400, atot + 1200);
+
+            var detecciones = avion.mensajesRadarP3
+                .Where(m =>
+                    m.categoria == 48 &&
+                    m.tira is TiraDatosDecod048)
+                .Select(m => new
+                {
+                    mensaje = m,
+                    datos = (TiraDatosDecod048)m.tira
+                })
+                .Where(d =>
+                    double.IsFinite(d.datos.TimeOfDay) &&
+                    d.datos.TimeOfDay >= inicio &&
+                    d.datos.TimeOfDay <= fin)
+                .OrderBy(d => d.datos.TimeOfDay)
+                .ToList();
+
+            double distanciaAnterior = double.NaN;
+            double ejeAnterior = double.NaN;
+            double tiempoAnterior = double.NaN;
+
+            bool cruceDetectado = false;
+            double tiempoCruce = double.NaN;
+
+            foreach (var deteccion in detecciones)
+            {
+                TiraDatosDecod048 datos = deteccion.datos;
+
+                double tiempo = datos.TimeOfDay;
+
+                double distancia = CalcularDistanciaDesdeDERP3(
+                    datos, pista);
+
+                if (!PosicionRespectoPistaP3(
+                    datos, pista,
+                    out double posicionEje,
+                    out bool fueraDER))
+                    continue;
+
+                if (!double.IsFinite(distancia))
+                    continue;
+
+                // Comprobar continuidad temporal
+                bool consecutivas =
+                    double.IsFinite(tiempoAnterior) &&
+                    tiempo > tiempoAnterior &&
+                    tiempo - tiempoAnterior <= 12;
+
+                // Avanzar en el sentido de la pista
+                bool alejandose =
+                    consecutivas &&
+                    posicionEje > ejeAnterior &&
+                    posicionEje >= 0;
+
+                // Detectar el cruce real de 0,5 NM
+                if (!cruceDetectado &&
+                    consecutivas &&
+                    distanciaAnterior < 0.5 &&
+                    distancia >= 0.5 &&
+                    alejandose &&
+                    fueraDER)
+                {
+                    cruceDetectado = true;
+                    tiempoCruce = tiempo;
+                }
+
+                if (cruceDetectado)
+                {
+                    // No buscar indefinidamente tras el cruce
+                    if (tiempo - tiempoCruce > 60)
+                        break;
+
+                    int stat = datos.CommACAScapability.STAT;
+
+                    bool enVuelo =
+                        stat == 0 || stat == 2;
+
+                    bool flValido =
+                        double.IsFinite(datos.FL.FL) &&
+                        datos.FL.V != 1;
+
+                    // Aplicar el límite de 6000 ft cuando
+                    // disponemos de altitud QNH válida
+                    bool altitudValida =
+                        double.IsFinite(datos.altitudQNHFt) &&
+                        datos.altitudQNHFt <= 6000;
+
+                    // Condición opcional: haber pasado el DER
+                    bool cumpleDER =
+                        !exigirFueraDER || fueraDER;
+
+                    if (distancia >= 0.5 &&
+                        alejandose &&
+                        enVuelo &&
+                        flValido &&
+                        altitudValida &&
+                        cumpleDER)
+                    {
+                        distanciaTWR = distancia;
+
+                        return deteccion.mensaje;
+                    }
+                }
+
+                distanciaAnterior = distancia;
+                ejeAnterior = posicionEje;
+                tiempoAnterior = tiempo;
+            }
+
+            return null;
+        }
+
+        private double CalcularDistanciaDesdeDERP3(
+            TiraDatosDecod048 datos,
+            string pista)
+        {
+            // Posición del avión sobre el eje de pista
+            if (!PosicionRespectoPistaP3(
+                datos, pista,
+                out double posicionEje,
+                out bool fueraDER))
+            {
+                return double.NaN;
+            }
+
+            // Coordenadas de los extremos de pista
+            double lat24L = 41 + 17.0 / 60 + 31.99 / 3600;
+            double lon24L = 2 + 6.0 / 60 + 11.81 / 3600;
+
+            double lat06R = 41 + 16.0 / 60 + 56.32 / 3600;
+            double lon06R = 2 + 4.0 / 60 + 27.66 / 3600;
+
+            var extremo24L = ProyectarCoordenadasP3(
+                lat24L, lon24L);
+
+            var extremo06R = ProyectarCoordenadasP3(
+                lat06R, lon06R);
+
+            // Longitud entre los dos extremos
+            double dx = extremo24L.x - extremo06R.x;
+            double dy = extremo24L.y - extremo06R.y;
+
+            double longitudPista = Math.Sqrt(dx * dx + dy * dy);
+
+            // Distancia longitudinal desde el DER.
+            // Negativa: antes de llegar al DER.
+            // Positiva: después de superar el DER.
+            double distanciaMetros = posicionEje - longitudPista;
+
+            return distanciaMetros / 1852.0;
+        }
+
+
+        private (double x, double y) ProyectarCoordenadasP3(
+            double latitud, double longitud)
+        {
+            // Centro de proyección del TMA Barcelona
+            double latCentro = 41 + 6.0 / 60 + 56.56 / 3600;
+            double lonCentro = 1 + 41.0 / 60 + 33.01 / 3600;
+
+            CoordinatesWGS84 centro = new CoordinatesWGS84(
+                latCentro * GeoUtils.DEGS2RADS,
+                lonCentro * GeoUtils.DEGS2RADS,
+                0
+            );
+
+            GeoUtils geo = new GeoUtils(
+                Math.Sqrt(0.00669437999013),
+                6378137.0,
+                centro
+            );
+
+            CoordinatesWGS84 posicion = new CoordinatesWGS84(
+                latitud * GeoUtils.DEGS2RADS,
+                longitud * GeoUtils.DEGS2RADS,
+                0
+            );
+
+            CoordinatesXYZ geocentrica =
+                geo.change_geodesic2geocentric(posicion);
+
+            CoordinatesXYZ cartesiana =
+                geo.change_geocentric2system_cartesian(geocentrica);
+
+            CoordinatesUVH proyectada =
+                geo.change_system_cartesian2stereographic(cartesiana);
+
+            return (proyectada.U, proyectada.V);
+        }
+
+        private bool PosicionRespectoPistaP3(
+            TiraDatosDecod048 datos,
+            string pista,
+            out double distanciaEjeMetros,
+            out bool fueraDER)
+        {
+            distanciaEjeMetros = double.NaN;
+            fueraDER = false;
+
+            if (datos.PositionCorrectedLatLonAlt == null ||
+                datos.PositionCorrectedLatLonAlt.Count < 2)
+                return false;
+
+            double latAvion = datos.PositionCorrectedLatLonAlt[0];
+            double lonAvion = datos.PositionCorrectedLatLonAlt[1];
+
+            if (!double.IsFinite(latAvion) ||
+                !double.IsFinite(lonAvion))
+                return false;
+
+            // Extremos de la pista
+            double lat24L = 41 + 17.0 / 60 + 31.99 / 3600;
+            double lon24L = 2 + 6.0 / 60 + 11.81 / 3600;
+
+            double lat06R = 41 + 16.0 / 60 + 56.32 / 3600;
+            double lon06R = 2 + 4.0 / 60 + 27.66 / 3600;
+
+            double latTHR, lonTHR;
+            double latDER, lonDER;
+
+            if (pista == "24L")
+            {
+                latTHR = lat24L;
+                lonTHR = lon24L;
+
+                latDER = lat06R;
+                lonDER = lon06R;
+            }
+            else if (pista == "06R")
+            {
+                latTHR = lat06R;
+                lonTHR = lon06R;
+
+                latDER = lat24L;
+                lonDER = lon24L;
+            }
+            else
+            {
+                return false;
+            }
+
+            var thr = ProyectarCoordenadasP3(latTHR, lonTHR);
+            var der = ProyectarCoordenadasP3(latDER, lonDER);
+            var avion = ProyectarCoordenadasP3(latAvion, lonAvion);
+
+            // Vector desde el THR hacia el DER
+            double dx = der.x - thr.x;
+            double dy = der.y - thr.y;
+
+            double longitudPista = Math.Sqrt(dx * dx + dy * dy);
+
+            if (longitudPista <= 0)
+                return false;
+
+            // Vector desde el THR hasta el avión
+            double ax = avion.x - thr.x;
+            double ay = avion.y - thr.y;
+
+            // Proyección del avión sobre el eje de pista
+            distanciaEjeMetros =
+                (ax * dx + ay * dy) / longitudPista;
+
+            // Ha sobrepasado el plano perpendicular
+            // al eje de pista que pasa por el DER
+            fueraDER = distanciaEjeMetros > longitudPista;
+
+            return true;
+        }
+
+        private bool ObtenerPosicionInterpoladaP3(
+            AvionSimulacion avion,
+            double tiempo,
+            out double x,
+            out double y)
+        {
+            x = double.NaN;
+            y = double.NaN;
+
+            if (avion == null ||
+                !double.IsFinite(tiempo) ||
+                avion.mensajesRadarP3 == null ||
+                avion.mensajesRadarP3.Count == 0)
+                return false;
+
+            // Obtener detecciones CAT48 con posición y tiempo válidos
+            var detecciones = avion.mensajesRadarP3
+                .Where(m => m.categoria == 48 &&
+                            m.tira is TiraDatosDecod048)
+                .Select(m => (TiraDatosDecod048)m.tira)
+                .Where(d =>
+                    double.IsFinite(d.TimeOfDay) &&
+                    d.TimeOfDay >= 0 &&
+                    d.PositionCorrectedLatLonAlt != null &&
+                    d.PositionCorrectedLatLonAlt.Count >= 2 &&
+                    double.IsFinite(d.PositionCorrectedLatLonAlt[0]) &&
+                    double.IsFinite(d.PositionCorrectedLatLonAlt[1]))
+                .OrderBy(d => d.TimeOfDay)
+                .ToList();
+
+            // Buscar una detección exacta o dos que rodeen
+            // el instante de la primera detección TWR
+            for (int i = 0; i < detecciones.Count; i++)
+            {
+                TiraDatosDecod048 actual = detecciones[i];
+
+                // Si existe una detección en el instante solicitado
+                if (Math.Abs(actual.TimeOfDay - tiempo) < 0.001)
+                {
+                    var posicion = ProyectarCoordenadasP3(
+                        actual.PositionCorrectedLatLonAlt[0],
+                        actual.PositionCorrectedLatLonAlt[1]);
+
+                    x = posicion.x;
+                    y = posicion.y;
+
+                    return true;
+                }
+
+                if (i == 0)
+                    continue;
+
+                TiraDatosDecod048 anterior = detecciones[i - 1];
+
+                double t1 = anterior.TimeOfDay;
+                double t2 = actual.TimeOfDay;
+
+                // El instante debe estar entre las dos muestras
+                if (t1 > tiempo || t2 < tiempo)
+                    continue;
+
+                // Evitar interpolar entre detecciones demasiado
+                // separadas o con tiempos repetidos
+                if (t2 <= t1 || t2 - t1 > 12)
+                    return false;
+
+                // Proyectar las dos posiciones radar
+                var p1 = ProyectarCoordenadasP3(
+                    anterior.PositionCorrectedLatLonAlt[0],
+                    anterior.PositionCorrectedLatLonAlt[1]);
+
+                var p2 = ProyectarCoordenadasP3(
+                    actual.PositionCorrectedLatLonAlt[0],
+                    actual.PositionCorrectedLatLonAlt[1]);
+
+                // Factor de interpolación lineal
+                double factor = (tiempo - t1) / (t2 - t1);
+
+                // Posición estimada en el instante solicitado
+                x = p1.x + factor * (p2.x - p1.x);
+                y = p1.y + factor * (p2.y - p1.y);
+
+                return true;
+            }
+
+            // No hay datos para estimar la posición
+            return false;
+        }
+
+        private double CalcularSeparacionTWRP3(
+            AvionSimulacion avion)
+        {
+            // Comprobar que existe un avión precedente
+            if (avion == null || avion.avionPrecedente == null)
+                return double.NaN;
+
+            // Obtener la primera detección válida del avión
+            // a 0,5 NM del DER de su pista
+            Mensaje? mensajeTWR =
+                BuscarPrimeraDeteccionTWRP3(
+                    avion,
+                    out double distanciaDER);
+
+            if (mensajeTWR == null)
+                return double.NaN;
+
+            TiraDatosDecod048 datos =
+                (TiraDatosDecod048)mensajeTWR.tira;
+
+            // Instante en el que queremos comparar ambos aviones
+            double tiempo = datos.TimeOfDay;
+
+            // Posición del avión posterior
+            var posterior = ProyectarCoordenadasP3(
+                datos.PositionCorrectedLatLonAlt[0],
+                datos.PositionCorrectedLatLonAlt[1]);
+
+            // Posición interpolada del avión precedente
+            bool encontrado = ObtenerPosicionInterpoladaP3(
+                avion.avionPrecedente,
+                tiempo,
+                out double xPrecedente,
+                out double yPrecedente);
+
+            if (!encontrado)
+                return double.NaN;
+
+            // Calcular distancia horizontal
+            double dx = posterior.x - xPrecedente;
+            double dy = posterior.y - yPrecedente;
+
+            double distanciaMetros = Math.Sqrt(
+                dx * dx + dy * dy);
+
+            return distanciaMetros / 1852.0;
+        }
+
+        private double CalcularSeparacionMinimaTMAP3(
+            AvionSimulacion avion,
+            out double tiempoMinimo,
+            out int comparaciones,
+            out double separacionFinal)
+        {
+            tiempoMinimo = double.NaN;
+            tiempoMinimo = double.NaN;
+            comparaciones = 0;
+            separacionFinal = double.NaN;
+
+            if (avion == null || avion.avionPrecedente == null)
+                return double.NaN;
+
+            // Primera detección válida del avión posterior
+            Mensaje? mensajeTWR = BuscarPrimeraDeteccionTWRP3(
+                avion, out double distanciaDER);
+
+            if (mensajeTWR == null)
+                return double.NaN;
+
+            double inicioTMA =
+                ((TiraDatosDecod048)mensajeTWR.tira).TimeOfDay;
+
+            double separacionMinima = double.MaxValue;
+
+            // Recorrer las detecciones posteriores al inicio TWR
+            var detecciones = avion.mensajesRadarP3
+                .Where(m => m.categoria == 48 &&
+                            m.tira is TiraDatosDecod048)
+                .Select(m => (TiraDatosDecod048)m.tira)
+                .Where(d => double.IsFinite(d.TimeOfDay) &&
+                            d.TimeOfDay > inicioTMA)
+                .OrderBy(d => d.TimeOfDay);
+
+            foreach (TiraDatosDecod048 datos in detecciones)
+            {
+                if (datos.PositionCorrectedLatLonAlt == null ||
+                    datos.PositionCorrectedLatLonAlt.Count < 2)
+                    continue;
+
+                double lat = datos.PositionCorrectedLatLonAlt[0];
+                double lon = datos.PositionCorrectedLatLonAlt[1];
+
+                if (!double.IsFinite(lat) || !double.IsFinite(lon))
+                    continue;
+
+                // Filtro geográfico del P3
+                if (lat < 40.9 || lat > 41.7 ||
+                    lon < 1.5 || lon > 2.6)
+                    continue;
+
+                // Comprobar estado y Flight Level
+                int stat = datos.CommACAScapability.STAT;
+
+                if (stat != 0 && stat != 2)
+                    continue;
+
+                if (!double.IsFinite(datos.FL.FL) ||
+                    datos.FL.V == 1)
+                    continue;
+
+                // Altitud corregida por QNH
+                if (!double.IsFinite(datos.altitudQNHFt))
+                    continue;
+
+                // Finalizar el análisis al superar 6000 ft
+                if (datos.altitudQNHFt > 6000)
+                    break;
+
+                // Proyectar la posición del avión posterior
+                var posterior = ProyectarCoordenadasP3(lat, lon);
+
+                // Interpolar el precedente al mismo instante
+                bool encontrado = ObtenerPosicionInterpoladaP3(
+                    avion.avionPrecedente,
+                    datos.TimeOfDay,
+                    out double xPrecedente,
+                    out double yPrecedente);
+
+                if (!encontrado)
+                    continue;
+
+                // Calcular separación horizontal
+                double dx = posterior.x - xPrecedente;
+                double dy = posterior.y - yPrecedente;
+
+                double separacion =
+                    Math.Sqrt(dx * dx + dy * dy) / 1852.0;
+
+                // Registrar cuántas distancias hemos calculado
+                comparaciones++;
+
+                // Guardar la última distancia disponible
+                separacionFinal = separacion;
+
+                // Conservar únicamente la menor separación
+                if (separacion < separacionMinima)
+                {
+                    separacionMinima = separacion;
+                    tiempoMinimo = datos.TimeOfDay;
+                }
+            }
+
+            if (separacionMinima == double.MaxValue)
+                return double.NaN;
+
+            return separacionMinima;
+        }
+        private void AplicarFiltroMensajesP3()
+        {
+            if (!mostrarSoloAvionesP3)
+                return;
+
+            Filtros gestorFiltros = new Filtros();
+
+            ListaMensajesFiltrados =
+                gestorFiltros.FiltrarDespeguesP3(
+                    ListaMensajesFiltrados,
+                    mensajesVisiblesP3);
+        }
+
+        private void ActualizarFiltros()
+        {
+            Filtros gestorFiltros = new Filtros();
+
+            ListaMensajesFiltrados = gestorFiltros.AplicarFiltros(
+                ListaMensajes,
+                filtroCat48,
+                filtroCat21,
+                filtroBlancoPuro,
+                filtroTransFijo,
+                filtroTrayectoria,
+                filtroTrayectoriaMin,
+                filtroTrayectoriaMax,
+                filtroGround,
+                filtroAltura,
+                filtroAlturaMin,
+                filtroAlturaMax,
+                mostrarSoloAvionesP3,
+                mensajesVisiblesP3
+            );
+
+            ReconstruirAviones(TiempoActual);
+        }
+
     }
 }

@@ -3,5 +3,6 @@
   <Project Path="DatosDecod/DatosDecod48.csproj" />
   <Project Path="DatosDecod21/DatosDecod21.csproj" />
   <Project Path="GUI_ASTERIX/GUI_ASTERIX.csproj" Id="1a604853-f399-49f8-869a-505a6c14e0be" />
+  <Project Path="P3/P3.csproj" Id="58b48806-97bd-419f-b533-d87559fa6ddc" />
   <Project Path="Simulacion/Simulacion.csproj" Id="43405922-5b29-4801-bbf6-3ba61076a1c8" />
 </Solution>

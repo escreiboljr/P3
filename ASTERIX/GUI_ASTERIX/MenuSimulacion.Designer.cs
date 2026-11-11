@@ -46,6 +46,8 @@
             ayudaToolStripMenuItem = new ToolStripMenuItem();
             moToolStripMenuItem = new ToolStripMenuItem();
             guiaToolStripMenuItem = new ToolStripMenuItem();
+            p3ToolStripMenuItem = new ToolStripMenuItem();
+            cargarPlanDeVueloToolStripMenuItem = new ToolStripMenuItem();
             timerSimulacion = new System.Windows.Forms.Timer(components);
             trackBarVelSimulacion = new TrackBar();
             dataGridAviones = new DataGridView();
@@ -100,7 +102,7 @@
             // menuStrip1
             // 
             menuStrip1.ImageScalingSize = new Size(24, 24);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { archivoToolStripMenuItem, filtrarToolStripMenuItem, verToolStripMenuItem, ayudaToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { archivoToolStripMenuItem, filtrarToolStripMenuItem, verToolStripMenuItem, ayudaToolStripMenuItem, p3ToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(985, 29);
@@ -226,6 +228,21 @@
             guiaToolStripMenuItem.Size = new Size(271, 26);
             guiaToolStripMenuItem.Text = "Guia";
             guiaToolStripMenuItem.Click += guiaToolStripMenuItem_Click;
+            // 
+            // p3ToolStripMenuItem
+            // 
+            p3ToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { cargarPlanDeVueloToolStripMenuItem });
+            p3ToolStripMenuItem.Font = new Font("Segoe UI", 12F);
+            p3ToolStripMenuItem.Name = "p3ToolStripMenuItem";
+            p3ToolStripMenuItem.Size = new Size(40, 25);
+            p3ToolStripMenuItem.Text = "P3";
+            // 
+            // cargarPlanDeVueloToolStripMenuItem
+            // 
+            cargarPlanDeVueloToolStripMenuItem.Name = "cargarPlanDeVueloToolStripMenuItem";
+            cargarPlanDeVueloToolStripMenuItem.Size = new Size(224, 26);
+            cargarPlanDeVueloToolStripMenuItem.Text = "Cargar plan de vuelo";
+            cargarPlanDeVueloToolStripMenuItem.Click += cargarPlanDeVueloToolStripMenuItem_Click;
             // 
             // timerSimulacion
             // 
@@ -753,5 +770,7 @@
         private Label labelHeatmap50;
         private Label labelHeatmap25;
         private Label labeldensidad;
+        private ToolStripMenuItem p3ToolStripMenuItem;
+        private ToolStripMenuItem cargarPlanDeVueloToolStripMenuItem;
     }
 }
