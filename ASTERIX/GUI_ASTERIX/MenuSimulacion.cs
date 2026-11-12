@@ -2318,56 +2318,6 @@ namespace GUI_ASTERIX
                 CalcularHeatmapCompleto();
         }
 
-        private Dictionary<(int, int), double> SuavizarHeatmap(
-    Dictionary<(int, int), HashSet<string>> densidades)
-        {
-            // crear el diccionario donde se guardarán las densidades suavizadas
-            Dictionary<(int, int), double> suavizadas =
-                new Dictionary<(int, int), double>();
-
-            // definir el radio y la intensidad del suavizado gaussiano
-            int radio = 4;
-            double sigma = 2.5;
-
-            foreach (var celda in densidades)
-            {
-                int fila = celda.Key.Item1;
-                int columna = celda.Key.Item2;
-
-                double suma = 0;
-                double sumaPesos = 0;
-
-                // recorrer las celdas vecinas y calcular sus pesos según la distancia
-                for (int i = -radio; i <= radio; i++)
-                {
-                    for (int j = -radio; j <= radio; j++)
-                    {
-                        double distancia2 = i * i + j * j;
-
-                        double peso = Math.Exp(
-                            -distancia2 / (2 * sigma * sigma)
-                        );
-
-                        var vecino = (fila + i, columna + j);
-
-                        // sumar la densidad de los vecinos aplicando el peso gaussiano
-                        if (densidades.TryGetValue(
-                            vecino, out HashSet<string> aviones))
-                        {
-                            suma += aviones.Count * peso;
-                        }
-
-                        sumaPesos += peso;
-                    }
-                }
-
-                // calcular y guardar la densidad suavizada de la celda
-                suavizadas[celda.Key] = suma / sumaPesos;
-            }
-
-            return suavizadas;
-        }
-
         private void ActualizarHeatmapDinamico(bool forzar = false)
         {
             if (!mostrarHeatmapDinamico)
@@ -2830,6 +2780,42 @@ namespace GUI_ASTERIX
 
                     planesVueloP3 = lector.LeerExcel(
                         explorador.FileName);
+
+                    IdentificarSIDP3();
+                    int reconocidas = planesVueloP3.Count(p =>
+    p.procDesp != "-" &&
+    !string.IsNullOrWhiteSpace(p.procDesp));
+
+                    int inferidas = planesVueloP3.Count(p =>
+                        p.procDesp == "-" &&
+                        p.sidDetectada != "-");
+
+                    int sinIdentificar = planesVueloP3.Count(p =>
+                        p.sidDetectada == "-");
+
+                    string resultado = "";
+
+                    foreach (PlanVueloP3 plan in planesVueloP3
+                        .Where(p => p.pistaDespegue == "24L" ||
+                                    p.pistaDespegue == "06R")
+                        .Take(50))
+                    {
+                        resultado +=
+                            plan.indicativo +
+                            " | Pista: " + plan.pistaDespegue +
+                            " | Original: " + plan.procDesp +
+                            " | Detectada: " + plan.sidDetectada +
+                            " | Grupo: " + plan.grupoSID +
+                            "\n";
+                    }
+
+                    MessageBox.Show(
+                        "SID originales reconocidas: " + reconocidas +
+                        "\nSID inferidas: " + inferidas +
+                        "\nSin identificar: " + sinIdentificar +
+                        "\n\n" + resultado,
+                        "Proyecto 3 - Identificación SID"
+                    );
 
                     // Asociar los planes y los precedentes
                     AsignarPlanesVueloP3();
@@ -3594,5 +3580,147 @@ namespace GUI_ASTERIX
             ReconstruirAviones(TiempoActual);
         }
 
+
+        private void IdentificarSIDP3()
+        {
+            // Grupos de SID según la pista de despegue
+            string[][] grupos24L =
+            {
+        new[] { "OLOXO", "NATPI", "MOPAS", "GRAUS",
+                "LOBAR", "MAMUK", "REBUL", "VIBOK", "DUQQI" },
+
+        new[] { "DUNES", "LARPA", "LOTOS", "SENIA" },
+
+        new[] { "DALIN", "AGENA", "DIPES" }
+    };
+
+            string[][] grupos06R =
+            {
+        new[] { "OLOXO", "NATPI", "MOPAS", "LOBAR",
+                "GRAUS", "MAMUK", "REBUL", "VIBOK", "DUQQI" },
+
+        new[] { "LARPA", "DUNES", "SENIA", "LOTOS" },
+
+        new[] { "AGENA", "DALIN", "DIPES" }
+    };
+
+            foreach (PlanVueloP3 plan in planesVueloP3)
+            {
+                plan.sidDetectada = "-";
+                plan.grupoSID = "-";
+
+                string pista = plan.pistaDespegue;
+                string ruta = plan.rutaSACTA?.ToUpperInvariant() ?? "";
+
+                // Solo analizar las pistas del P3
+                if (pista != "24L" && pista != "06R")
+                    continue;
+
+                string[][] grupos = pista == "24L"
+                    ? grupos24L
+                    : grupos06R;
+
+                // 1. Si el Excel ya contiene una SID, utilizarla directamente
+                if (!string.IsNullOrWhiteSpace(plan.procDesp) &&
+                    plan.procDesp.Trim() != "-")
+                {
+                    plan.sidDetectada = plan.procDesp.Trim();
+
+                    string procedimiento =
+                        plan.procDesp.Trim().ToUpperInvariant();
+
+                    // Determinar el grupo a partir de la SID original
+                    for (int i = 0; i < grupos.Length; i++)
+                    {
+                        if (grupos[i].Any(punto =>
+                            System.Text.RegularExpressions.Regex.IsMatch(
+                                procedimiento,
+                                "^" + punto + @"\d+[A-Z]$")))
+                        {
+                            plan.grupoSID = "G" + (i + 1);
+                            break;
+                        }
+                    }
+
+                    // No hace falta analizar RutaSACTA
+                    continue;
+                }
+
+                // 2. Si no hay SID original, buscar puntos en RutaSACTA
+                var coincidencias = new List<(string punto, int posicion)>();
+
+                for (int i = 0; i < grupos.Length; i++)
+                {
+                    foreach (string punto in grupos[i])
+                    {
+                        var encontrados =
+                            System.Text.RegularExpressions.Regex.Matches(
+                                ruta,
+                                @"\b" + punto + @"\b");
+
+                        foreach (System.Text.RegularExpressions.Match m
+                            in encontrados)
+                        {
+                            coincidencias.Add((punto, m.Index));
+                        }
+                    }
+                }
+
+                // DUQQI y VIBOK pueden ser puntos intermedios.
+                // Si existe otro candidato, priorizar ese.
+                var candidatos = coincidencias
+                    .Where(c => c.punto != "DUQQI" &&
+                                c.punto != "VIBOK")
+                    .ToList();
+
+                // Si no encontramos ningún punto, dejar SID sin identificar
+                if (candidatos.Count == 0)
+                    continue;
+
+                // Seleccionar el último punto candidato de la ruta
+                string puntoSID = candidatos
+                    .OrderBy(c => c.posicion)
+                    .Last().punto;
+
+                // 3. Determinar el grupo de la SID inferida
+                for (int i = 0; i < grupos.Length; i++)
+                {
+                    if (grupos[i].Contains(puntoSID))
+                    {
+                        plan.grupoSID = "G" + (i + 1);
+                        break;
+                    }
+                }
+
+                // 4. Buscar una SID conocida de la misma pista
+                // y asociada al mismo punto de salida
+                string sidConocida = planesVueloP3
+                    .Where(p =>
+                        p.pistaDespegue == pista &&
+                        !string.IsNullOrWhiteSpace(p.procDesp) &&
+                        p.procDesp.Trim() != "-" &&
+                        System.Text.RegularExpressions.Regex.IsMatch(
+                            p.procDesp.Trim(),
+                            "^" + puntoSID + @"\d+[A-Z]$",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    .Select(p => p.procDesp.Trim())
+                    .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(g => g.Count())
+                    .Select(g => g.Key)
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrEmpty(sidConocida))
+                {
+                    // SID probable según los procedimientos del Excel
+                    plan.sidDetectada = sidConocida;
+                }
+                else
+                {
+                    // Se conoce la familia, pero no la versión exacta
+                    plan.sidDetectada = puntoSID +
+                        (pista == "24L" ? "-C" : "-R");
+                }
+            }
+        }
     }
 }
