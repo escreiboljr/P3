@@ -39,6 +39,7 @@ namespace Simulacion
         public double separacionTWR { get; set; } = double.NaN;
         public double separacionMinimaTMA { get; set; } = double.NaN;
         public double tiempoSeparacionMinimaTMA { get; set; } = double.NaN;
+        public string motivoSeparacionP3 { get; set; } = "";
 
         public AvionSimulacion()
         {
