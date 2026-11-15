@@ -1100,7 +1100,8 @@ namespace GUI_ASTERIX
         private async void MenuSimulacion_Shown(object sender, EventArgs e)
         {
             // Ruta del archivo ASTERIX que queremos cargar automáticamente
-            string rutaArchivo = @"C:\Users\user\Desktop\asterix_radar.ast";
+            //string rutaArchivo = @"C:\Users\user\Desktop\asterix_radar.ast";
+            string rutaArchivo = @"C:\Users\PC-ADRIAN\Downloads\asterix_radar.ast";
 
             // Comprobar que existe
             if (!File.Exists(rutaArchivo))
@@ -2966,8 +2967,17 @@ namespace GUI_ASTERIX
                                    tiempo >= inicio &&
                                    tiempo <= fin;
                         })
+                        .OrderBy(m =>
+                            ((TiraDatosDecod048)m.tira).TimeOfDay)
+                        .TakeWhile(m =>
+                        {
+                            TiraDatosDecod048 datos =
+                                (TiraDatosDecod048)m.tira;
+
+                            return !SuperaAltitudMaximaP3(datos);
+                        })
                         .ToList();
-                }
+                                    }
 
                 // Conservar también los planes sin detecciones
                 avionesP3.Add(avion);
@@ -3466,7 +3476,7 @@ namespace GUI_ASTERIX
                             m.tira is TiraDatosDecod048)
                 .Select(m => (TiraDatosDecod048)m.tira)
                 .Where(d => double.IsFinite(d.TimeOfDay) &&
-                            d.TimeOfDay > inicioTMA)
+                    d.TimeOfDay >= inicioTMA)
                 .OrderBy(d => d.TimeOfDay);
 
             foreach (TiraDatosDecod048 datos in detecciones)
@@ -3722,5 +3732,27 @@ namespace GUI_ASTERIX
                 }
             }
         }
+        private bool SuperaAltitudMaximaP3(TiraDatosDecod048 datos)
+        {
+            // Comprobar altitud corregida por QNH
+            if (double.IsFinite(datos.altitudQNHFt) &&
+                datos.altitudQNHFt >= 0 &&
+                datos.altitudQNHFt > 6000)
+            {
+                return true;
+            }
+
+            // Comprobar Flight Level
+            if (double.IsFinite(datos.FL.FL) &&
+                datos.FL.FL >= 0 &&
+                datos.FL.V != 1 &&
+                datos.FL.FL > 60)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
     }
 }
