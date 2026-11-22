@@ -261,10 +261,10 @@ namespace DatosDecod
             this.mode3.G = bits[1];
             this.mode3.L = bits[2];
 
-            int A = bits[4] * 1 + bits[5] * 2 + bits[6] * 4;
-            int B = bits[7] * 1 + bits[8] * 2 + bits[9] * 4;
-            int C = bits[10] * 1 + bits[11] * 2 + bits[12] * 4;
-            int D = bits[13] * 1 + bits[14] * 2 + bits[15] * 4;
+            int A = bits[4] * 4 + bits[5] * 2 + bits[6];
+            int B = bits[7] * 4 + bits[8] * 2 + bits[9];
+            int C = bits[10] * 4 + bits[11] * 2 + bits[12];
+            int D = bits[13] * 4 + bits[14] * 2 + bits[15];
 
             this.mode3.reply = $"{A}{B}{C}{D}";
         }
