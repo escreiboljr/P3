@@ -35,6 +35,8 @@ namespace GUI_ASTERIX
         private List<AvionSimulacion> MensajesActuales = new List<AvionSimulacion>();
         private List<PlanVueloP3> planesVueloP3 = new List<PlanVueloP3>();
         private List<AvionSimulacion> avionesP3 = new List<AvionSimulacion>();
+        private Dictionary<PlanVueloP3, ResultadoLoAP3> resultadosLoAP3 =
+            new Dictionary<PlanVueloP3, ResultadoLoAP3>();
         private bool mostrarSoloAvionesP3 = false;
         private HashSet<Mensaje> mensajesVisiblesP3 = new HashSet<Mensaje>();
         // Instante de salida de TMA de cada plan de vuelo
@@ -1174,7 +1176,6 @@ namespace GUI_ASTERIX
                 }
             }
 
-            barraDataGrid?.Actualizar();
             barraDataGrid?.Actualizar();
         }
 
@@ -2760,6 +2761,7 @@ namespace GUI_ASTERIX
         //==============================================================================
 
 
+
         private void cargarPlanDeVueloToolStripMenuItem_Click(
             object sender, EventArgs e)
         {
@@ -2773,168 +2775,86 @@ namespace GUI_ASTERIX
 
                 try
                 {
-                    // Cargar los planes de vuelo
+                    // ==========================================
+                    // 1. CARGAR PLANES DE VUELO
+                    // ==========================================
+
                     LectorPlanesVueloP3 lector =
                         new LectorPlanesVueloP3();
 
                     planesVueloP3 = lector.LeerExcel(
                         explorador.FileName);
 
+                    // Identificar SID y grupos
                     IdentificarSIDP3();
-                    int reconocidas = planesVueloP3.Count(p =>
-    p.procDesp != "-" &&
-    !string.IsNullOrWhiteSpace(p.procDesp));
 
-                    int inferidas = planesVueloP3.Count(p =>
-                        p.procDesp == "-" &&
-                        p.sidDetectada != "-");
-
-                    int sinIdentificar = planesVueloP3.Count(p =>
-                        p.sidDetectada == "-");
-
-                    string resultado = "";
-
-                    foreach (PlanVueloP3 plan in planesVueloP3
-                        .Where(p => p.pistaDespegue == "24L" ||
-                                    p.pistaDespegue == "06R")
-                        .Take(50))
-                    {
-                        resultado +=
-                            plan.indicativo +
-                            " | Pista: " + plan.pistaDespegue +
-                            " | Original: " + plan.procDesp +
-                            " | Detectada: " + plan.sidDetectada +
-                            " | Grupo: " + plan.grupoSID +
-                            "\n";
-                    }
-
-                    MessageBox.Show(
-                        "SID originales reconocidas: " + reconocidas +
-                        "\nSID inferidas: " + inferidas +
-                        "\nSin identificar: " + sinIdentificar +
-                        "\n\n" + resultado,
-                        "Proyecto 3 - Identificación SID"
-                    );
-
-                    // Asociar los planes y los precedentes
+                    // Asociar radar con los planes
                     AsignarPlanesVueloP3();
+
+                    // Asignar precedentes por pista y ATOT
                     AsignarAvionesPrecedentesP3();
-                    ComprobarAsignacionesDuplicadasP3();
-                    int sinCruce = 0;
-                    int sinPrecedenteRadar = 0;
-                    int sinPosicionPrecedente = 0;
 
-                    string diagnostico = "";
-
-                    foreach (AvionSimulacion avion in avionesP3
-                        .Where(a => a.mensajesRadarP3.Count > 0))
-                    {
-                        if (avion.avionPrecedente == null)
-                            continue;
-
-                        bool cruce = BuscarCruce05P3(
-                            avion,
-                            out double tiempo,
-                            out double x,
-                            out double y);
-
-                        if (!cruce)
-                        {
-                            sinCruce++;
-                            diagnostico += avion.identificador +
-                                " | SIN CRUCE\n";
-                            continue;
-                        }
-
-                        if (avion.avionPrecedente.mensajesRadarP3.Count == 0)
-                        {
-                            sinPrecedenteRadar++;
-
-                            diagnostico += avion.identificador +
-                                " | PRECEDENTE SIN RADAR: " +
-                                avion.avionPrecedente.identificador + "\n";
-
-                            continue;
-                        }
-
-                        bool posicion = ObtenerPosicionInterpoladaP3(
-                            avion.avionPrecedente,
-                            tiempo,
-                            out double xp,
-                            out double yp);
-
-                        if (!posicion)
-                        {
-                            sinPosicionPrecedente++;
-
-                            string indicativoPrecedente =
-    avion.avionPrecedente.identificador;
-
-                            string salida = "DESCONOCIDA";
-
-                            PlanVueloP3 planPrecedente =
-                                avion.avionPrecedente.planVuelo;
-
-                            if (planPrecedente != null &&
-                                tiemposSalidaP3.TryGetValue(
-                                    planPrecedente,
-                                    out double tiempoSalida))
-                            {
-                                salida = TimeSpan.FromSeconds(tiempoSalida)
-                                    .ToString(@"hh\:mm\:ss");
-                            }
-
-                            diagnostico +=
-                                avion.identificador +
-                                " | Precedente: " + indicativoPrecedente +
-                                " | Cruce: " +
-                                TimeSpan.FromSeconds(tiempo)
-                                    .ToString(@"hh\:mm\:ss") +
-                                " | Salida precedente: " + salida +
-                                "\n";
-                        }
-                    }
-
-                    MessageBox.Show(
-                        "Sin cruce: " + sinCruce +
-                        "\nPrecedente sin radar: " + sinPrecedenteRadar +
-                        "\nSin posición del precedente: " +
-                        sinPosicionPrecedente +
-                        "\n\n" + diagnostico,
-                        "Diagnóstico definitivo P3"
-                    );
-
+                    // Preparar mensajes visibles
                     mensajesVisiblesP3 = avionesP3
                         .SelectMany(a => a.mensajesRadarP3)
                         .ToHashSet();
 
                     mostrarSoloAvionesP3 = true;
-                    
-                    // Aplicar todos los filtros y reconstruir la simulación
+
                     ActualizarFiltros();
+
+
+                    // ==========================================
+                    // 2. CONTADORES DE SEPARACIONES
+                    // ==========================================
 
                     int separacionesCalculadas = 0;
                     int separacionesNoCalculadas = 0;
                     int minimasCalculadas = 0;
 
-                    string resultadoSeparaciones = "";
+                    int incumplimientosRadarTWR = 0;
+                    int incumplimientosRadarTMA = 0;
+
+                    int incumplimientosEstelaTWR = 0;
+                    int incumplimientosEstelaTMA = 0;
+
+                    int perdidasRadarTWR = 0;
+                    int perdidasRadarTMA = 0;
+
+                    int perdidasEstelaTWR = 0;
+                    int perdidasEstelaTMA = 0;
+
+                    int sinAltitudTWR = 0;
+                    int sinAltitudTMA = 0;
+
+                    int altitudesTWRCalculadas = 0;
+                    int avionesConAltitudesTMA = 0;
+                    int totalMuestrasAltitudTMA = 0;
+
+                    double minimaDiferenciaAltitudTWR =
+                        double.PositiveInfinity;
+
+
+                    // ==========================================
+                    // 3. CALCULAR SEPARACIONES
+                    // ==========================================
 
                     foreach (AvionSimulacion avion in avionesP3
-                        .Where(a => a.mensajesRadarP3.Count > 0)
+                        .Where(a =>
+                            a.planVuelo != null &&
+                            a.mensajesRadarP3 != null &&
+                            a.mensajesRadarP3.Count > 0)
                         .OrderBy(a => a.planVuelo.atot))
                     {
-                        // Calcular separación TWR
-                        avion.separacionTWR = CalcularSeparacionTWRP3(avion);
-
-                        // Comprobar el estado de la separación
-                        avion.motivoSeparacionP3 =
-                            ComprobarEstadoSeparacionP3(avion);
-
-                        // Calcular separación TWR
+                        // Separación TWR
                         avion.separacionTWR =
                             CalcularSeparacionTWRP3(avion);
 
-                        // Calcular separación mínima TMA
+                        // Estado del cálculo
+                        avion.motivoSeparacionP3 =
+                            ComprobarEstadoSeparacionP3(avion);
+
+                        // Separación mínima TMA
                         avion.separacionMinimaTMA =
                             CalcularSeparacionMinimaTMAP3(
                                 avion,
@@ -2942,46 +2862,116 @@ namespace GUI_ASTERIX
                                 out int comparaciones,
                                 out double separacionFinal);
 
-                        avion.tiempoSeparacionMinimaTMA = tiempoMinimo;
-                        // Evaluar los mínimos de separación por estela
+                        avion.tiempoSeparacionMinimaTMA =
+                            tiempoMinimo;
+
+
+                        // ======================================
+                        // 3.1. INCUMPLIMIENTO RADAR
+                        // ======================================
+
+                        bool? incumpleRadarTWR = null;
+                        bool? incumpleRadarTMA = null;
+
+                        if (double.IsFinite(avion.separacionTWR))
+                        {
+                            incumpleRadarTWR =
+                                avion.separacionTWR < 3.0;
+                        }
+
+                        if (double.IsFinite(avion.separacionMinimaTMA))
+                        {
+                            incumpleRadarTMA =
+                                avion.separacionMinimaTMA < 3.0;
+                        }
+
+                        if (incumpleRadarTWR == true)
+                            incumplimientosRadarTWR++;
+
+                        if (incumpleRadarTMA == true)
+                            incumplimientosRadarTMA++;
+
+
+                        // ======================================
+                        // 3.2. SEPARACIÓN POR ESTELA
+                        // ======================================
+
                         CalcularIncumplimientoEstelaP3(avion);
 
-                        string minimaTWR = double.IsFinite(avion.minimaEstelaTWR)
-                            ? avion.minimaEstelaTWR.ToString("F1") + " NM"
-                            : "N/A";
+                        if (avion.incumplimientoEstelaTWR == true)
+                            incumplimientosEstelaTWR++;
 
-                        string minimaTMA = double.IsFinite(avion.minimaEstelaTMA)
-                            ? avion.minimaEstelaTMA.ToString("F1") + " NM"
-                            : "N/A";
-
-                        string incTWR = avion.incumplimientoEstelaTWR.HasValue
-                            ? (avion.incumplimientoEstelaTWR.Value ? "SI" : "NO")
-                            : "N/A";
-
-                        string incTMA = avion.incumplimientoEstelaTMA.HasValue
-                            ? (avion.incumplimientoEstelaTMA.Value ? "SI" : "NO")
-                            : "N/A";
-
-                        string incTiempo = avion.incumplimientoTiempoEstelaTWR.HasValue
-                            ? (avion.incumplimientoTiempoEstelaTWR.Value ? "SI" : "NO")
-                            : "N/A";
-
-                        string infoEstela =
-                            " | Estela precedente: " +
-                            (avion.avionPrecedente?.planVuelo?.estela ?? "-") +
-                            " | Estela seguidor: " +
-                            (avion.planVuelo?.estela ?? "-") +
-                            " | Min TWR: " + minimaTWR +
-                            " | Inc TWR: " + incTWR +
-                            " | Min TMA: " + minimaTMA +
-                            " | Inc TMA: " + incTMA +
-                            " | Inc tiempo: " + incTiempo +
-                            " | Estado estela: " + avion.estadoEstelaP3;
-
-                        resultadoSeparaciones += infoEstela + "\n";
+                        if (avion.incumplimientoEstelaTMA == true)
+                            incumplimientosEstelaTMA++;
 
 
-                        // Comprobar el resultado final
+                        // ======================================
+                        // 3.3. PÉRDIDAS OPERATIVAS
+                        // ======================================
+
+                        CalcularPerdidasOperativasP3(avion);
+
+                        if (avion.perdidaRadarTWR == true)
+                            perdidasRadarTWR++;
+
+                        if (avion.perdidaRadarTMA == true)
+                            perdidasRadarTMA++;
+
+                        if (avion.perdidaEstelaTWR == true)
+                            perdidasEstelaTWR++;
+
+                        if (avion.perdidaEstelaTMA == true)
+                            perdidasEstelaTMA++;
+
+
+                        // ======================================
+                        // 3.4. COMPROBACIÓN DE ALTITUDES
+                        // ======================================
+
+                        if (double.IsFinite(avion.diferenciaAltitudTWR))
+                        {
+                            altitudesTWRCalculadas++;
+
+                            minimaDiferenciaAltitudTWR = Math.Min(
+                                minimaDiferenciaAltitudTWR,
+                                avion.diferenciaAltitudTWR);
+                        }
+
+                        if (avion.muestrasAltitudTMA > 0)
+                        {
+                            avionesConAltitudesTMA++;
+
+                            totalMuestrasAltitudTMA +=
+                                avion.muestrasAltitudTMA;
+                        }
+
+                        if (double.IsFinite(avion.separacionTWR) &&
+                            !double.IsFinite(avion.diferenciaAltitudTWR))
+                        {
+                            sinAltitudTWR++;
+                        }
+
+                        if (double.IsFinite(avion.separacionMinimaTMA) &&
+                            avion.muestrasAltitudTMA == 0)
+                        {
+                            sinAltitudTMA++;
+                        }
+
+
+                        // ======================================
+                        // 3.5. CONTADORES GENERALES
+                        // ======================================
+
+                        if (double.IsFinite(avion.separacionTWR))
+                            separacionesCalculadas++;
+                        else
+                            separacionesNoCalculadas++;
+
+                        if (double.IsFinite(avion.separacionMinimaTMA))
+                            minimasCalculadas++;
+
+
+                        // Actualizar estado final
                         if (double.IsFinite(avion.separacionTWR) &&
                             double.IsFinite(avion.separacionMinimaTMA))
                         {
@@ -2992,58 +2982,296 @@ namespace GUI_ASTERIX
                             avion.motivoSeparacionP3 =
                                 "SEPARACIÓN NO CALCULADA";
                         }
-
-                        // Contadores
-                        if (double.IsFinite(avion.separacionTWR))
-                            separacionesCalculadas++;
-                        else
-                            separacionesNoCalculadas++;
-
-                        if (double.IsFinite(avion.separacionMinimaTMA))
-                            minimasCalculadas++;
-
-                        // Obtener el indicativo del precedente
-                        string precedente = avion.avionPrecedente != null
-                            ? avion.avionPrecedente.identificador
-                            : "NINGUNO";
-
-                        // Preparar resultados para mostrar
-                        string distanciaTWR = double.IsFinite(avion.separacionTWR)
-                            ? avion.separacionTWR.ToString("F3") + " NM"
-                            : "N/A";
-
-                        string distanciaTMA = double.IsFinite(avion.separacionMinimaTMA)
-                            ? avion.separacionMinimaTMA.ToString("F3") + " NM"
-                            : "N/A";
-
-                        string horaMinima = double.IsFinite(tiempoMinimo)
-                            ? TimeSpan.FromSeconds(tiempoMinimo)
-                                .ToString(@"hh\:mm\:ss")
-                            : "N/A";
-
-                        resultadoSeparaciones +=
-     avion.identificador +
-     " | TWR: " + distanciaTWR +
-     " | TMA: " + distanciaTMA +
-     " | Comparaciones: " + comparaciones +
-     " | Última: " +
-     (double.IsFinite(separacionFinal)
-         ? separacionFinal.ToString("F3") + " NM"
-         : "N/A") +
-     " | Estado: " + avion.motivoSeparacionP3 +
-     "\n";
                     }
-                    ValidarSeparacionesP3();
+
+
+                    // ==========================================
+                    // 4. EVALUACIÓN INDEPENDIENTE LoA
+                    // ==========================================
+
+                    int loaEvaluadas = 0;
+                    int loaIncumplimientos = 0;
+                    int loaNoEvaluables = 0;
+
+                    string estadoCalculoLoA = "NO CALCULADA";
+
+                    resultadosLoAP3.Clear();
+
+                    try
+                    {
+                        // Buscar Excel de clasificación en
+                        // la carpeta de los planes de vuelo
+                        string carpeta = Path.GetDirectoryName(
+                            explorador.FileName);
+
+                        string rutaClasificacion = Path.Combine(
+                            carpeta,
+                            "Tabla_Clasificacion_aeronaves (2).xlsx");
+
+                        // Selección manual si no se encuentra
+                        if (!File.Exists(rutaClasificacion))
+                        {
+                            using (OpenFileDialog selector =
+                                new OpenFileDialog())
+                            {
+                                selector.Title =
+                                    "Seleccionar tabla de clasificación LoA";
+
+                                selector.Filter =
+                                    "Archivos Excel (*.xlsx)|*.xlsx";
+
+                                if (selector.ShowDialog() == DialogResult.OK)
+                                    rutaClasificacion = selector.FileName;
+                                else
+                                    rutaClasificacion = "";
+                            }
+                        }
+
+                        if (rutaClasificacion != "")
+                        {
+                            AnalizadorLoAP3 analizador =
+                                new AnalizadorLoAP3(rutaClasificacion);
+
+                            foreach (AvionSimulacion avion in avionesP3
+                                .Where(a =>
+                                    a.planVuelo != null &&
+                                    a.mensajesRadarP3 != null &&
+                                    a.mensajesRadarP3.Count > 0)
+                                .OrderBy(a => a.planVuelo.atot))
+                            {
+                                PlanVueloP3 precedente =
+                                    avion.avionPrecedente?.planVuelo;
+
+                                ResultadoLoAP3 resultado =
+                                    analizador.Evaluar(
+                                        precedente,
+                                        avion.planVuelo,
+                                        avion.separacionTWR);
+                                if (resultado.incumple == true)
+                                {
+                                    Debug.WriteLine(
+                                        "CLASIFICACIÓN LoA | " +
+                                        avion.identificador +
+                                        " | Modelo precedente en Excel: " +
+                                        analizador.ModeloEncontradoEnExcel(
+                                            precedente?.tipoAeronave) +
+                                        " | Modelo seguidor en Excel: " +
+                                        analizador.ModeloEncontradoEnExcel(
+                                            avion.planVuelo.tipoAeronave)
+                                    );
+                                }
+
+                                // Guardar sin modificar el avión
+                                resultadosLoAP3[avion.planVuelo] =
+                                    resultado;
+
+
+                                // ==================================
+                                // 4.1. CONTADORES LoA
+                                // ==================================
+
+                                if (resultado.incumple.HasValue)
+                                {
+                                    loaEvaluadas++;
+
+                                    if (resultado.incumple.Value)
+                                        loaIncumplimientos++;
+                                }
+                                else
+                                {
+                                    loaNoEvaluables++;
+                                }
+
+
+                                // ==================================
+                                // 4.2. DIAGNÓSTICO DE INCUMPLIMIENTOS
+                                // ==================================
+
+                                if (resultado.incumple == true)
+                                {
+                                    Debug.WriteLine(
+                                        "LoA INCUMPLE | " +
+
+                                        "Precedente: " +
+                                        (precedente?.indicativo ?? "-") +
+
+                                        " | Modelo: " +
+                                        (precedente?.tipoAeronave ?? "-") +
+
+                                        " | Categoría: " +
+                                        resultado.categoriaPrecedente +
+
+                                        " | SID: " +
+                                        (precedente?.sidDetectada ?? "-") +
+
+                                        " | Grupo: " +
+                                        (precedente?.grupoSID ?? "-") +
+
+                                        " || Seguidor: " +
+                                        avion.identificador +
+
+                                        " | Modelo: " +
+                                        avion.planVuelo.tipoAeronave +
+
+                                        " | Categoría: " +
+                                        resultado.categoriaSeguidor +
+
+                                        " | SID: " +
+                                        avion.planVuelo.sidDetectada +
+
+                                        " | Grupo: " +
+                                        avion.planVuelo.grupoSID +
+
+                                        " | Misma SID: " +
+                                        resultado.mismaSID +
+
+                                        " | Mínimo: " +
+                                        resultado.minimaNM.ToString("F1") +
+                                        " NM" +
+
+                                        " | Real: " +
+                                        resultado.distanciaNM.ToString("F3") +
+                                        " NM"
+                                    );
+                                }
+
+
+                                // ==================================
+                                // 4.3. CASOS NO EVALUABLES
+                                // ==================================
+
+                                // Solo mostrar casos que tienen
+                                // distancia TWR calculada
+                                if (!resultado.incumple.HasValue &&
+                                    double.IsFinite(avion.separacionTWR))
+                                {
+                                    Debug.WriteLine(
+                                        "LoA NO EVALUABLE | " +
+
+                                        "Seguidor: " +
+                                        avion.identificador +
+
+                                        " | Precedente: " +
+                                        (precedente?.indicativo ?? "-") +
+
+                                        " | Motivo: " +
+                                        resultado.estado +
+
+                                        " | Modelo precedente: " +
+                                        (precedente?.tipoAeronave ?? "-") +
+
+                                        " | Modelo seguidor: " +
+                                        avion.planVuelo.tipoAeronave +
+
+                                        " | SID precedente: " +
+                                        (precedente?.sidDetectada ?? "-") +
+
+                                        " | Grupo precedente: " +
+                                        (precedente?.grupoSID ?? "-") +
+
+                                        " | SID seguidor: " +
+                                        avion.planVuelo.sidDetectada +
+
+                                        " | Grupo seguidor: " +
+                                        avion.planVuelo.grupoSID +
+
+                                        " | Distancia TWR: " +
+                                        avion.separacionTWR.ToString("F3") +
+                                        " NM"
+                                    );
+                                }
+                            }
+
+                            estadoCalculoLoA = "CALCULADA";
+                        }
+                        else
+                        {
+                            estadoCalculoLoA =
+                                "NO CALCULADA: Excel no seleccionado";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Error aislado de LoA
+                        // No modifica los cálculos anteriores
+                        resultadosLoAP3.Clear();
+
+                        loaEvaluadas = 0;
+                        loaIncumplimientos = 0;
+                        loaNoEvaluables = 0;
+
+                        estadoCalculoLoA =
+                            "ERROR: " + ex.Message;
+
+                        Debug.WriteLine(
+                            "Error al calcular LoA: " + ex);
+                    }
+
+
+                    // ==========================================
+                    // 5. RESUMEN FINAL
+                    // ==========================================
 
                     MessageBox.Show(
-                        "Separaciones TWR calculadas: " +
-                        separacionesCalculadas +
-                        "\nSeparaciones TWR no calculadas: " +
-                        separacionesNoCalculadas +
-                        "\nSeparaciones mínimas TMA calculadas: " +
-                        minimasCalculadas +
-                        "\n\n" + resultadoSeparaciones,
-                        "Proyecto 3 - Separaciones TWR y TMA"
+                        "RESUMEN PROYECTO 3\n\n" +
+
+                        "PLANES DE VUELO\n" +
+                        "Planes cargados: " + planesVueloP3.Count +
+                        "\nAviones con radar: " +
+                        avionesP3.Count(a =>
+                            a.mensajesRadarP3 != null &&
+                            a.mensajesRadarP3.Count > 0) +
+
+                        "\n\nSEPARACIONES CALCULADAS\n" +
+                        "TWR calculadas: " + separacionesCalculadas +
+                        "\nTWR no calculadas: " + separacionesNoCalculadas +
+                        "\nTMA calculadas: " + minimasCalculadas +
+
+                        "\n\nINCUMPLIMIENTOS HORIZONTALES RADAR\n" +
+                        "Radar TWR (< 3 NM): " +
+                        incumplimientosRadarTWR +
+                        "\nRadar TMA (< 3 NM): " +
+                        incumplimientosRadarTMA +
+
+                        "\n\nINCUMPLIMIENTOS POR ESTELA\n" +
+                        "Estela TWR: " + incumplimientosEstelaTWR +
+                        "\nEstela TMA: " + incumplimientosEstelaTMA +
+
+                        "\n\nPÉRDIDAS OPERATIVAS\n" +
+                        "Radar TWR: " + perdidasRadarTWR +
+                        "\nRadar TMA: " + perdidasRadarTMA +
+                        "\nEstela TWR: " + perdidasEstelaTWR +
+                        "\nEstela TMA: " + perdidasEstelaTMA +
+
+                        "\n\nALTITUDES NO EVALUABLES\n" +
+                        "TWR: " + sinAltitudTWR +
+                        "\nTMA: " + sinAltitudTMA +
+
+                        "\n\nSEPARACIÓN LoA (SOLO TWR)\n" +
+                        "Estado: " + estadoCalculoLoA +
+                        "\nParejas evaluadas: " + loaEvaluadas +
+                        "\nIncumplimientos: " + loaIncumplimientos +
+                        "\nNo evaluables: " + loaNoEvaluables +
+
+                        "\n\nCOMPROBACIÓN DE ALTITUDES\n" +
+                        "TWR con altitudes válidas: " +
+                        altitudesTWRCalculadas +
+
+                        "\nAviones con altitudes TMA: " +
+                        avionesConAltitudesTMA +
+
+                        "\nMuestras TMA con altitudes: " +
+                        totalMuestrasAltitudTMA +
+
+                        "\nMenor diferencia altitud TWR: " +
+                        (double.IsFinite(minimaDiferenciaAltitudTWR)
+                            ? minimaDiferenciaAltitudTWR.ToString("F0") +
+                              " ft"
+                            : "N/A"),
+
+                        "Proyecto 3 - Resultados",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
                     );
                 }
                 catch (Exception ex)
@@ -3051,7 +3279,9 @@ namespace GUI_ASTERIX
                     MessageBox.Show(
                         "Error al cargar los planes de vuelo:\n" +
                         ex.Message,
-                        "Proyecto 3"
+                        "Proyecto 3",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
                     );
                 }
             }
@@ -3229,35 +3459,70 @@ namespace GUI_ASTERIX
             }
         }
 
+        private void ComprobarAsignacionesDuplicadasP3()
+        {
+            // Buscar mensajes radar asignados a más de un vuelo
+            var mensajesDuplicados = avionesP3
+                .SelectMany(a => a.mensajesRadarP3)
+                .GroupBy(m => m)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            // Buscar indicativos repetidos en los planes de vuelo
+            var indicativosRepetidos = planesVueloP3
+                .GroupBy(
+                    p => p.indicativo,
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            string resultado = "";
+
+            foreach (var grupo in indicativosRepetidos)
+            {
+                resultado +=
+                    grupo.Key +
+                    " | Vuelos: " + grupo.Count() +
+                    "\n";
+            }
+
+            MessageBox.Show(
+                "Planes cargados: " + planesVueloP3.Count +
+                "\nAviones P3: " + avionesP3.Count +
+                "\nAviones con radar: " +
+                avionesP3.Count(a => a.mensajesRadarP3.Count > 0) +
+                "\nIndicativos repetidos: " +
+                indicativosRepetidos.Count +
+                "\nMensajes asignados varias veces: " +
+                mensajesDuplicados.Count +
+                "\n\n" + resultado,
+                "Comprobación de asignaciones P3"
+            );
+        }
+
         private bool BuscarCruce05P3(
-    AvionSimulacion avion,
-    out double tiempoCruce,
-    out double xCruce,
-    out double yCruce)
+            AvionSimulacion avion,
+            out double tiempoCruce,
+            out double xCruce,
+            out double yCruce)
         {
             tiempoCruce = double.NaN;
             xCruce = double.NaN;
             yCruce = double.NaN;
 
-            if (avion == null ||
-                avion.planVuelo == null ||
-                avion.mensajesRadarP3.Count < 2)
+            if (avion?.planVuelo == null ||
+                avion.mensajesRadarP3 == null ||
+                avion.mensajesRadarP3.Count == 0)
                 return false;
 
             string pista = avion.planVuelo.pistaDespegue;
-
-            if (pista != "24L" && pista != "06R")
-                return false;
-
             double atot = avion.planVuelo.atot;
 
-            if (!double.IsFinite(atot))
+            if ((pista != "24L" && pista != "06R") ||
+                !double.IsFinite(atot))
                 return false;
 
-            double inicio = Math.Max(0, atot - 60);
-            double fin = Math.Min(86400, atot + 1200);
-
-            // Ordenar cronológicamente las detecciones
+            // Buscar detecciones posteriores al despegue
             var detecciones = avion.mensajesRadarP3
                 .Where(m =>
                     m.categoria == 48 &&
@@ -3265,120 +3530,82 @@ namespace GUI_ASTERIX
                 .Select(m => (TiraDatosDecod048)m.tira)
                 .Where(d =>
                     double.IsFinite(d.TimeOfDay) &&
-                    d.TimeOfDay >= inicio &&
-                    d.TimeOfDay <= fin)
-                .OrderBy(d => d.TimeOfDay)
-                .ToList();
+                    d.TimeOfDay >= atot &&
+                    d.TimeOfDay <= atot + 1200)
+                .OrderBy(d => d.TimeOfDay);
 
-            TiraDatosDecod048 anterior = null;
-
-            double distanciaAnterior = double.NaN;
-            double ejeAnterior = double.NaN;
-
-            foreach (TiraDatosDecod048 actual in detecciones)
+            foreach (TiraDatosDecod048 datos in detecciones)
             {
-                double distanciaActual =
-                    CalcularDistanciaDesdeDERP3(actual, pista);
+                // Comprobar posición
+                if (datos.PositionCorrectedLatLonAlt == null ||
+                    datos.PositionCorrectedLatLonAlt.Count < 2)
+                    continue;
 
+                double lat = datos.PositionCorrectedLatLonAlt[0];
+                double lon = datos.PositionCorrectedLatLonAlt[1];
+
+                if (!double.IsFinite(lat) ||
+                    !double.IsFinite(lon))
+                    continue;
+
+                // Filtro geográfico
+                if (lat < 40.9 || lat > 41.7 ||
+                    lon < 1.5 || lon > 2.6)
+                    continue;
+
+                // Solo detecciones en vuelo
+                int stat = datos.CommACAScapability.STAT;
+
+                if (stat != 0 && stat != 2)
+                    continue;
+
+                // Flight Level válido
+                if (!double.IsFinite(datos.FL.FL) ||
+                    datos.FL.V == 1)
+                    continue;
+
+                // Obtener posición respecto a la pista
                 if (!PosicionRespectoPistaP3(
-                    actual,
+                    datos,
                     pista,
-                    out double ejeActual,
+                    out double distanciaEje,
                     out bool fueraDER))
-                {
-                    anterior = null;
                     continue;
-                }
 
-                if (!double.IsFinite(distanciaActual))
-                {
-                    anterior = null;
+                // El avión tiene que estar fuera de pista
+                if (!fueraDER)
                     continue;
-                }
 
-                // Comprobar si tenemos una detección anterior válida
-                if (anterior != null)
-                {
-                    double t1 = anterior.TimeOfDay;
-                    double t2 = actual.TimeOfDay;
+                // Calcular distancia DESDE EL DER
+                double distanciaDER =
+                    CalcularDistanciaDesdeDERP3(datos, pista);
 
-                    bool consecutivas =
-                        t2 > t1 &&
-                        t2 - t1 <= 12;
+                if (!double.IsFinite(distanciaDER))
+                    continue;
 
-                    bool alejandose =
-                        ejeActual > ejeAnterior &&
-                        ejeActual >= 0;
+                // Los primeros 0,5 NM después del DER
+                // tampoco se consideran.
+                if (distanciaDER < 0.5)
+                    continue;
 
-                    // Detectar el cruce de 0,5 NM
-                    bool cruce =
-                        consecutivas &&
-                        alejandose &&
-                        fueraDER &&
-                        distanciaAnterior < 0.5 &&
-                        distanciaActual >= 0.5;
+                // Primera detección válida
+                var posicion = ProyectarCoordenadasP3(
+                    lat, lon);
 
-                    if (cruce)
-                    {
-                        // Factor de interpolación
-                        double factor =
-                            (0.5 - distanciaAnterior) /
-                            (distanciaActual - distanciaAnterior);
+                if (!double.IsFinite(posicion.x) ||
+                    !double.IsFinite(posicion.y))
+                    continue;
 
-                        // Instante estimado del cruce
-                        tiempoCruce =
-                            t1 + factor * (t2 - t1);
+                tiempoCruce = datos.TimeOfDay;
+                xCruce = posicion.x;
+                yCruce = posicion.y;
 
-                        // Obtener posiciones geográficas
-                        var posAnterior =
-                            anterior.PositionCorrectedLatLonAlt;
-
-                        var posActual =
-                            actual.PositionCorrectedLatLonAlt;
-
-                        if (posAnterior == null ||
-                            posActual == null ||
-                            posAnterior.Count < 2 ||
-                            posActual.Count < 2)
-                            return false;
-
-                        // Proyectar ambas posiciones
-                        var p1 = ProyectarCoordenadasP3(
-                            posAnterior[0],
-                            posAnterior[1]);
-
-                        var p2 = ProyectarCoordenadasP3(
-                            posActual[0],
-                            posActual[1]);
-
-                        // Interpolar la posición del avión
-                        xCruce = p1.x + factor * (p2.x - p1.x);
-                        yCruce = p1.y + factor * (p2.y - p1.y);
-
-                        System.Diagnostics.Debug.WriteLine(
-    avion.identificador +
-    " | Pista: " + pista +
-    " | Distancia anterior: " +
-    distanciaAnterior.ToString("F3") + " NM" +
-    " | Distancia actual: " +
-    distanciaActual.ToString("F3") + " NM" +
-    " | Tiempo cruce: " +
-    TimeSpan.FromSeconds(tiempoCruce)
-        .ToString(@"hh\:mm\:ss\.fff")
-);
-
-                        return double.IsFinite(xCruce) &&
-                               double.IsFinite(yCruce);
-                    }
-                }
-
-                anterior = actual;
-                distanciaAnterior = distanciaActual;
-                ejeAnterior = ejeActual;
+                return true;
             }
 
             return false;
         }
+
 
         private double CalcularDistanciaDesdeDERP3(
             TiraDatosDecod048 datos,
@@ -3626,6 +3853,80 @@ namespace GUI_ASTERIX
             return false;
         }
 
+
+        private bool ObtenerAltitudInterpoladaP3(
+            AvionSimulacion avion,
+            double tiempo,
+            out double altitud)
+        {
+            altitud = double.NaN;
+
+            if (avion == null ||
+                avion.mensajesRadarP3 == null ||
+                !double.IsFinite(tiempo))
+                return false;
+
+            // Obtener detecciones con altitud QNH válida
+            var detecciones = avion.mensajesRadarP3
+                .Where(m =>
+                    m.categoria == 48 &&
+                    m.tira is TiraDatosDecod048)
+                .Select(m => (TiraDatosDecod048)m.tira)
+                .Where(d =>
+                    double.IsFinite(d.TimeOfDay) &&
+                    double.IsFinite(d.altitudQNHFt) &&
+                    d.altitudQNHFt >= 0 &&
+                    double.IsFinite(d.FL.FL) &&
+                    d.FL.V != 1 &&
+                    (d.CommACAScapability.STAT == 0 ||
+                     d.CommACAScapability.STAT == 2) &&
+                    !HaSalidoDeTMAP3(d, avion.planVuelo))
+                .OrderBy(d => d.TimeOfDay)
+                .ToList();
+
+            if (detecciones.Count == 0)
+                return false;
+
+            for (int i = 0; i < detecciones.Count; i++)
+            {
+                TiraDatosDecod048 actual = detecciones[i];
+
+                // Tenemos una altitud en el instante exacto
+                if (Math.Abs(actual.TimeOfDay - tiempo) < 0.001)
+                {
+                    altitud = actual.altitudQNHFt;
+                    return true;
+                }
+
+                if (i == 0)
+                    continue;
+
+                TiraDatosDecod048 anterior = detecciones[i - 1];
+
+                double t1 = anterior.TimeOfDay;
+                double t2 = actual.TimeOfDay;
+
+                // Buscar dos detecciones que rodeen el instante
+                if (tiempo < t1 || tiempo > t2)
+                    continue;
+
+                // Evitar interpolaciones sobre huecos excesivos
+                if (t2 <= t1 || t2 - t1 > 12)
+                    return false;
+
+                double factor = (tiempo - t1) / (t2 - t1);
+
+                // Interpolación lineal de altitud QNH
+                altitud = anterior.altitudQNHFt +
+                    factor * (actual.altitudQNHFt -
+                              anterior.altitudQNHFt);
+
+                return double.IsFinite(altitud);
+            }
+
+            return false;
+        }
+
         private double CalcularSeparacionTWRP3(
     AvionSimulacion avion)
         {
@@ -3642,6 +3943,15 @@ namespace GUI_ASTERIX
 
             if (!encontrado)
                 return double.NaN;
+            // Comprobar si el precedente ya salió de la TMA
+            if (avion.avionPrecedente.planVuelo != null &&
+                tiemposSalidaP3.TryGetValue(
+                    avion.avionPrecedente.planVuelo,
+                    out double salidaPrecedente) &&
+                tiempoCruce >= salidaPrecedente)
+            {
+                return double.NaN;
+            }
 
             // Obtener la posición del precedente en el mismo instante
             bool precedenteEncontrado =
@@ -3687,31 +3997,18 @@ namespace GUI_ASTERIX
             if (!cruceEncontrado)
                 return double.NaN;
 
+            // Comprobar que el precedente sigue dentro de la TMA
+            if (avion.avionPrecedente.planVuelo != null &&
+                tiemposSalidaP3.TryGetValue(
+                    avion.avionPrecedente.planVuelo,
+                    out double salidaPrecedenteInicial) &&
+                inicioTMA >= salidaPrecedenteInicial)
+            {
+                return double.NaN;
+            }
+
             double separacionMinima = double.MaxValue;
 
-            // Calcular también la separación en el instante del cruce
-            /*bool precedenteEncontrado =
-                ObtenerPosicionInterpoladaP3(
-                    avion.avionPrecedente,
-                    inicioTMA,
-                    out double xPrecedente,
-                    out double yPrecedente);
-
-            if (precedenteEncontrado)
-            {
-                double dx = xCruce - xPrecedente;
-                double dy = yCruce - yPrecedente;
-
-                double separacionInicial =
-                    Math.Sqrt(dx * dx + dy * dy) / 1852.0;
-
-                separacionMinima = separacionInicial;
-                separacionFinal = separacionInicial;
-                tiempoMinimo = inicioTMA;
-
-                comparaciones++;
-            }
-            */
             // Obtener detecciones posteriores al cruce
             var detecciones = avion.mensajesRadarP3
                 .Where(m =>
@@ -3725,6 +4022,14 @@ namespace GUI_ASTERIX
 
             foreach (TiraDatosDecod048 datos in detecciones)
             {
+                if (avion.avionPrecedente.planVuelo != null &&
+                    tiemposSalidaP3.TryGetValue(
+                        avion.avionPrecedente.planVuelo,
+                        out double salidaPrecedente))
+                {
+                    if (datos.TimeOfDay >= salidaPrecedente)
+                        break;
+                }
                 if (datos.PositionCorrectedLatLonAlt == null ||
                     datos.PositionCorrectedLatLonAlt.Count < 2)
                     continue;
@@ -3976,23 +4281,25 @@ namespace GUI_ASTERIX
                 }
             }
         }
-        private bool SuperaAltitudMaximaP3(TiraDatosDecod048 datos)
+        private bool SuperaAltitudMaximaP3(
+     TiraDatosDecod048 datos)
         {
-            // Comprobar altitud corregida por QNH
+            if (datos == null)
+                return false;
+
+            // Utilizar primero la altitud corregida por QNH
             if (double.IsFinite(datos.altitudQNHFt) &&
-                datos.altitudQNHFt >= 0 &&
-                datos.altitudQNHFt > 6000)
+                datos.altitudQNHFt >= 0)
             {
-                return true;
+                return datos.altitudQNHFt > 6000;
             }
 
-            // Comprobar Flight Level
-            if (double.IsFinite(datos.FL.FL) &&
-                datos.FL.FL >= 0 &&
-                datos.FL.V != 1 &&
-                datos.FL.FL > 60)
+            // Si no hay QNH, utilizar el FL como aproximación
+            if (datos.FL.V != 1 &&
+                double.IsFinite(datos.FL.FL) &&
+                datos.FL.FL >= 0)
             {
-                return true;
+                return datos.FL.FL > 60;
             }
 
             return false;
@@ -4030,8 +4337,8 @@ namespace GUI_ASTERIX
 
             return true;
         }
-                private string ComprobarEstadoSeparacionP3(
-            AvionSimulacion avion)
+        private string ComprobarEstadoSeparacionP3(
+    AvionSimulacion avion)
         {
             // Comprobar que existe el avión
             if (avion == null)
@@ -4096,9 +4403,9 @@ namespace GUI_ASTERIX
 
             return "CALCULADA";
         }
+
         private void ValidarSeparacionesP3()
         {
-            // Aviones que queremos analizar
             string[] indicativos =
             {
         "VLG6152",
@@ -4108,227 +4415,74 @@ namespace GUI_ASTERIX
 
             foreach (string indicativo in indicativos)
             {
-                AvionSimulacion avion = avionesP3
-                    .FirstOrDefault(a =>
-                        a.identificador == indicativo);
+                AvionSimulacion avion = avionesP3.FirstOrDefault(a =>
+                    string.Equals(
+                        a.identificador,
+                        indicativo,
+                        StringComparison.OrdinalIgnoreCase));
 
                 if (avion == null || avion.avionPrecedente == null)
                     continue;
 
-                // Obtener el instante de entrada en TMA
-                bool cruce = BuscarCruce05P3(
+                bool primeraDeteccion = BuscarCruce05P3(
                     avion,
-                    out double inicioTMA,
-                    out double xCruce,
-                    out double yCruce);
+                    out double tiempoPrimera,
+                    out double xPrimera,
+                    out double yPrimera);
 
-                if (!cruce)
-                    continue;
+                double twrRecalculada =
+                    CalcularSeparacionTWRP3(avion);
 
-                System.Diagnostics.Debug.WriteLine(
+                double tmaRecalculada =
+                    CalcularSeparacionMinimaTMAP3(
+                        avion,
+                        out double instanteMinimo,
+                        out int comparaciones,
+                        out double ultima);
+
+                Debug.WriteLine(
                     "\n====================================");
 
-                System.Diagnostics.Debug.WriteLine(
-                    "AVIÓN: " + avion.identificador);
+                Debug.WriteLine("AVIÓN: " + avion.identificador);
 
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     "PRECEDENTE: " +
                     avion.avionPrecedente.identificador);
 
-                System.Diagnostics.Debug.WriteLine(
-                    "INICIO TMA: " +
-                    TimeSpan.FromSeconds(inicioTMA)
-                        .ToString(@"hh\:mm\:ss\.fff"));
+                Debug.WriteLine(
+                    "PRIMERA DETECCIÓN DESPUÉS DE 0,5 NM DER: " +
+                    (primeraDeteccion
+                        ? TimeSpan.FromSeconds(tiempoPrimera)
+                            .ToString(@"hh\:mm\:ss\.fff")
+                        : "NO DISPONIBLE"));
 
-                System.Diagnostics.Debug.WriteLine(
-                    "====================================");
+                Debug.WriteLine(
+                    "TWR GUARDADA: " + avion.separacionTWR);
 
-                System.Diagnostics.Debug.WriteLine(
-                    "TIEMPO | DISTANCIA (NM)");
+                Debug.WriteLine(
+                    "TWR RECALCULADA: " + twrRecalculada);
 
-                // Calcular la separación inicial en el cruce
-                bool precedenteInicial =
-                    ObtenerPosicionInterpoladaP3(
-                        avion.avionPrecedente,
-                        inicioTMA,
-                        out double xPrecedente,
-                        out double yPrecedente);
+                Debug.WriteLine(
+                    "TMA GUARDADA: " + avion.separacionMinimaTMA);
 
-                double minimaComprobada = double.MaxValue;
-                double tiempoMinimo = double.NaN;
-                int comparaciones = 0;
+                Debug.WriteLine(
+                    "TMA RECALCULADA: " + tmaRecalculada);
 
-                if (precedenteInicial)
-                {
-                    double dx = xCruce - xPrecedente;
-                    double dy = yCruce - yPrecedente;
+                Debug.WriteLine(
+                    "MUESTRAS TMA (SIN TWR): " + comparaciones);
 
-                    double distanciaInicial =
-                        Math.Sqrt(dx * dx + dy * dy) / 1852.0;
-
-                    minimaComprobada = distanciaInicial;
-                    tiempoMinimo = inicioTMA;
-                    comparaciones++;
-
-                    System.Diagnostics.Debug.WriteLine(
-                        TimeSpan.FromSeconds(inicioTMA)
-                            .ToString(@"hh\:mm\:ss\.fff") +
-                        " | " +
-                        distanciaInicial.ToString("F3"));
-                }
-
-                // Obtener las detecciones posteriores al cruce
-                var detecciones = avion.mensajesRadarP3
-                    .Where(m =>
-                        m.categoria == 48 &&
-                        m.tira is TiraDatosDecod048)
-                    .Select(m => (TiraDatosDecod048)m.tira)
-                    .Where(d =>
-                        double.IsFinite(d.TimeOfDay) &&
-                        d.TimeOfDay > inicioTMA)
-                    .OrderBy(d => d.TimeOfDay);
-
-                foreach (TiraDatosDecod048 datos in detecciones)
-                {
-                    if (datos.PositionCorrectedLatLonAlt == null ||
-                        datos.PositionCorrectedLatLonAlt.Count < 2)
-                        continue;
-
-                    double lat = datos.PositionCorrectedLatLonAlt[0];
-                    double lon = datos.PositionCorrectedLatLonAlt[1];
-
-                    if (!double.IsFinite(lat) || !double.IsFinite(lon))
-                        continue;
-
-                    // Mismo filtro geográfico que el cálculo TMA
-                    if (lat < 40.9 || lat > 41.7 ||
-                        lon < 1.5 || lon > 2.6)
-                        continue;
-
-                    // Comprobar estado y Flight Level
-                    int stat = datos.CommACAScapability.STAT;
-
-                    if (stat != 0 && stat != 2)
-                        continue;
-
-                    if (!double.IsFinite(datos.FL.FL) ||
-                        datos.FL.V == 1)
-                        continue;
-
-                    if (!double.IsFinite(datos.altitudQNHFt))
-                        continue;
-
-                    // Límite de seguimiento
-                    if (HaSalidoDeTMAP3(datos, avion.planVuelo))
-                        break;
-
-                    // Posición del avión posterior
-                    var posterior = ProyectarCoordenadasP3(
-                        lat, lon);
-
-                    // Posición interpolada del precedente
-                    bool encontrado = ObtenerPosicionInterpoladaP3(
-                        avion.avionPrecedente,
-                        datos.TimeOfDay,
-                        out double xp,
-                        out double yp);
-
-                    if (!encontrado)
-                        continue;
-
-                    // Distancia horizontal
-                    double dx = posterior.x - xp;
-                    double dy = posterior.y - yp;
-
-                    double distancia =
-                        Math.Sqrt(dx * dx + dy * dy) / 1852.0;
-
-                    comparaciones++;
-
-                    // Registrar separación mínima
-                    if (distancia < minimaComprobada)
-                    {
-                        minimaComprobada = distancia;
-                        tiempoMinimo = datos.TimeOfDay;
-                    }
-
-                    // Mostrar cada distancia calculada
-                    System.Diagnostics.Debug.WriteLine(
-                        TimeSpan.FromSeconds(datos.TimeOfDay)
-                            .ToString(@"hh\:mm\:ss\.fff") +
-                        " | " +
-                        distancia.ToString("F3"));
-                }
-
-                System.Diagnostics.Debug.WriteLine(
-                    "------------------------------------");
-
-                System.Diagnostics.Debug.WriteLine(
-                    "TWR GUARDADA: " +
-                    avion.separacionTWR.ToString("F3") + " NM");
-
-                System.Diagnostics.Debug.WriteLine(
-                    "TMA GUARDADA: " +
-                    avion.separacionMinimaTMA.ToString("F3") + " NM");
-
-                System.Diagnostics.Debug.WriteLine(
-                    "MÍNIMA COMPROBADA: " +
-                    (comparaciones > 0
-                        ? minimaComprobada.ToString("F3")
-                        : "N/A") + " NM");
-
-                System.Diagnostics.Debug.WriteLine(
-                    "TIEMPO DEL MÍNIMO: " +
-                    (double.IsFinite(tiempoMinimo)
-                        ? TimeSpan.FromSeconds(tiempoMinimo)
+                Debug.WriteLine(
+                    "INSTANTE MÍNIMO TMA: " +
+                    (double.IsFinite(instanteMinimo)
+                        ? TimeSpan.FromSeconds(instanteMinimo)
                             .ToString(@"hh\:mm\:ss\.fff")
                         : "N/A"));
 
-                System.Diagnostics.Debug.WriteLine(
-                    "COMPARACIONES: " + comparaciones);
-
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     "====================================\n");
             }
         }
-        private void ComprobarAsignacionesDuplicadasP3()
-        {
-            var mensajesDuplicados = avionesP3
-                .SelectMany(a => a.mensajesRadarP3)
-                .GroupBy(m => m)
-                .Where(g => g.Count() > 1)
-                .ToList();
 
-            var indicativosRepetidos = planesVueloP3
-                .GroupBy(
-                    p => p.indicativo,
-                    StringComparer.OrdinalIgnoreCase)
-                .Where(g => g.Count() > 1)
-                .ToList();
-
-            string resultado = "";
-
-            foreach (var grupo in indicativosRepetidos)
-            {
-                resultado +=
-                    grupo.Key +
-                    " | Vuelos: " + grupo.Count() +
-                    "\n";
-            }
-
-            MessageBox.Show(
-                "Planes cargados: " + planesVueloP3.Count +
-                "\nAviones P3: " + avionesP3.Count +
-                "\nAviones con radar: " +
-                avionesP3.Count(a => a.mensajesRadarP3.Count > 0) +
-                "\nIndicativos repetidos: " +
-                indicativosRepetidos.Count +
-                "\nMensajes asignados varias veces: " +
-                mensajesDuplicados.Count +
-                "\n\n" + resultado,
-                "Comprobación de asignaciones P3"
-            );
-        }
         private bool AvionFueraDeTMAP3(
     string indicativo,
     double tiempoActual)
@@ -4481,6 +4635,550 @@ namespace GUI_ASTERIX
             }
 
             avion.estadoEstelaP3 = "EVALUADA";
+        }
+
+        private void CalcularPerdidasOperativasP3(
+            AvionSimulacion avion)
+        {
+            if (avion == null)
+                return;
+
+            // Reiniciar los resultados
+            avion.diferenciaAltitudTWR = double.NaN;
+
+            avion.perdidaRadarTWR = null;
+            avion.perdidaRadarTMA = null;
+            avion.perdidaEstelaTWR = null;
+            avion.perdidaEstelaTMA = null;
+
+            avion.muestrasAltitudTMA = 0;
+
+            if (avion.planVuelo == null ||
+                avion.avionPrecedente?.planVuelo == null)
+                return;
+
+            AvionSimulacion precedente = avion.avionPrecedente;
+
+            // =====================================================
+            // 1. ZONA TWR
+            // =====================================================
+
+            bool primeraDeteccion = BuscarCruce05P3(
+                avion,
+                out double tiempoTWR,
+                out double xTWR,
+                out double yTWR);
+
+            if (!primeraDeteccion)
+                return;
+
+            // Comprobar que el precedente sigue dentro de TMA
+            if (tiemposSalidaP3.TryGetValue(
+                precedente.planVuelo,
+                out double salidaPrecedente) &&
+                tiempoTWR >= salidaPrecedente)
+            {
+                return;
+            }
+
+            bool altitudSeguidor = ObtenerAltitudInterpoladaP3(
+                avion, tiempoTWR, out double hSeguidor);
+
+            bool altitudPrecedente = ObtenerAltitudInterpoladaP3(
+                precedente, tiempoTWR, out double hPrecedente);
+
+            if (altitudSeguidor && altitudPrecedente)
+            {
+                double diferencia = Math.Abs(
+                    hSeguidor - hPrecedente);
+
+                avion.diferenciaAltitudTWR = diferencia;
+
+                bool separacionVerticalInsuficiente =
+                    diferencia < 1000.0;
+
+                // Radar TWR: mínimo horizontal de 3 NM
+                if (double.IsFinite(avion.separacionTWR))
+                {
+                    avion.perdidaRadarTWR =
+                        avion.separacionTWR < 3.0 &&
+                        separacionVerticalInsuficiente;
+                }
+
+                // Estela TWR: distancia y/o tiempo según tabla
+                bool distanciaDisponible =
+                    avion.incumplimientoEstelaTWR.HasValue;
+
+                bool tiempoDisponible =
+                    avion.incumplimientoTiempoEstelaTWR.HasValue;
+
+                if (distanciaDisponible || tiempoDisponible)
+                {
+                    bool incumpleEstela =
+                        avion.incumplimientoEstelaTWR == true ||
+                        avion.incumplimientoTiempoEstelaTWR == true;
+
+                    avion.perdidaEstelaTWR =
+                        incumpleEstela &&
+                        separacionVerticalInsuficiente;
+                }
+            }
+
+            // =====================================================
+            // 2. ZONA TMA
+            // =====================================================
+
+            // Solo detecciones posteriores a la primera TWR
+            var detecciones = avion.mensajesRadarP3
+                .Where(m =>
+                    m.categoria == 48 &&
+                    m.tira is TiraDatosDecod048)
+                .Select(m => (TiraDatosDecod048)m.tira)
+                .Where(d =>
+                    double.IsFinite(d.TimeOfDay) &&
+                    d.TimeOfDay > tiempoTWR)
+                .OrderBy(d => d.TimeOfDay);
+
+            bool perdidaRadar = false;
+            bool perdidaEstela = false;
+
+            foreach (TiraDatosDecod048 datos in detecciones)
+            {
+                double tiempo = datos.TimeOfDay;
+
+                // No superar la salida del precedente
+                if (tiemposSalidaP3.TryGetValue(
+                    precedente.planVuelo,
+                    out double salida))
+                {
+                    if (tiempo >= salida)
+                        break;
+                }
+
+                if (datos.PositionCorrectedLatLonAlt == null ||
+                    datos.PositionCorrectedLatLonAlt.Count < 2)
+                    continue;
+
+                double lat = datos.PositionCorrectedLatLonAlt[0];
+                double lon = datos.PositionCorrectedLatLonAlt[1];
+
+                if (!double.IsFinite(lat) || !double.IsFinite(lon))
+                    continue;
+
+                // Filtro geográfico P3
+                if (lat < 40.9 || lat > 41.7 ||
+                    lon < 1.5 || lon > 2.6)
+                    continue;
+
+                int stat = datos.CommACAScapability.STAT;
+
+                if (stat != 0 && stat != 2)
+                    continue;
+
+                if (!double.IsFinite(datos.FL.FL) ||
+                    datos.FL.V == 1)
+                    continue;
+
+                if (!double.IsFinite(datos.altitudQNHFt) ||
+                    datos.altitudQNHFt < 0)
+                    continue;
+
+                if (HaSalidoDeTMAP3(datos, avion.planVuelo))
+                    break;
+
+                // Posición del seguidor
+                var posicion = ProyectarCoordenadasP3(lat, lon);
+
+                // Posición del precedente en el mismo instante
+                if (!ObtenerPosicionInterpoladaP3(
+                    precedente,
+                    tiempo,
+                    out double xp,
+                    out double yp))
+                    continue;
+
+                // Altitud del precedente en el mismo instante
+                if (!ObtenerAltitudInterpoladaP3(
+                    precedente,
+                    tiempo,
+                    out double hp))
+                    continue;
+
+                double hs = datos.altitudQNHFt;
+
+                double diferenciaAltitud = Math.Abs(hs - hp);
+
+                // Distancia horizontal
+                double dx = posicion.x - xp;
+                double dy = posicion.y - yp;
+
+                double distancia =
+                    Math.Sqrt(dx * dx + dy * dy) / 1852.0;
+
+                avion.muestrasAltitudTMA++;
+
+                bool verticalInsuficiente =
+                    diferenciaAltitud < 1000.0;
+
+                // Incumplimiento operativo radar
+                if (distancia < 3.0 && verticalInsuficiente)
+                    perdidaRadar = true;
+
+                // Incumplimiento operativo por estela
+                if (double.IsFinite(avion.minimaEstelaTMA))
+                {
+                    if (distancia < avion.minimaEstelaTMA &&
+                        verticalInsuficiente)
+                    {
+                        perdidaEstela = true;
+                    }
+                }
+            }
+
+            // Guardar una sola pérdida por pareja en TMA
+            if (avion.muestrasAltitudTMA > 0)
+            {
+                avion.perdidaRadarTMA = perdidaRadar;
+
+                if (double.IsFinite(avion.minimaEstelaTMA))
+                    avion.perdidaEstelaTMA = perdidaEstela;
+            }
+        }
+
+        private void exportarResultadosToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ExportarResultadosCSV_P3();
+        }
+
+        private void ExportarResultadosCSV_P3()
+        {
+            if (avionesP3 == null || avionesP3.Count == 0)
+            {
+                MessageBox.Show(
+                    "Primero debes cargar los planes de vuelo P3.");
+                return;
+            }
+
+            using (SaveFileDialog guardar = new SaveFileDialog())
+            {
+                guardar.Title = "Exportar resultados del P3";
+                guardar.Filter = "Archivo CSV (*.csv)|*.csv";
+                guardar.DefaultExt = "csv";
+                guardar.FileName = "Resultados_P3.csv";
+
+                if (guardar.ShowDialog() != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    List<Dictionary<string, string>> filas =
+                        new List<Dictionary<string, string>>();
+
+                    foreach (AvionSimulacion avion in avionesP3
+                        .Where(a =>
+                            a.planVuelo != null &&
+                            a.mensajesRadarP3 != null &&
+                            a.mensajesRadarP3.Count > 0)
+                        .OrderBy(a => a.planVuelo.atot))
+                    {
+                        PlanVueloP3 seguidor = avion.planVuelo;
+
+                        PlanVueloP3 precedente =
+                            avion.avionPrecedente?.planVuelo;
+
+                        // =====================================
+                        // 1. TIEMPO TWR
+                        // =====================================
+
+                        double tiempoTWR = double.NaN;
+
+                        if (BuscarCruce05P3(
+                            avion,
+                            out double tiempoPrimeraDeteccion,
+                            out double xTWR,
+                            out double yTWR))
+                        {
+                            tiempoTWR = tiempoPrimeraDeteccion;
+                        }
+
+                        // =====================================
+                        // 2. TIEMPO Y DISTANCIA TMA
+                        // =====================================
+
+                        double tiempoTMA =
+                            avion.tiempoSeparacionMinimaTMA;
+
+                        double distanciaTMA =
+                            avion.separacionMinimaTMA;
+
+                        // =====================================
+                        // 3. DIFERENCIA DE ALTITUD TMA
+                        // =====================================
+
+                        double diferenciaAltitudTMA = double.NaN;
+
+                        if (avion.avionPrecedente != null &&
+                            double.IsFinite(tiempoTMA))
+                        {
+                            bool altitudSeguidor =
+                                ObtenerAltitudInterpoladaP3(
+                                    avion,
+                                    tiempoTMA,
+                                    out double hSeguidor);
+
+                            bool altitudPrecedente =
+                                ObtenerAltitudInterpoladaP3(
+                                    avion.avionPrecedente,
+                                    tiempoTMA,
+                                    out double hPrecedente);
+
+                            if (altitudSeguidor && altitudPrecedente)
+                            {
+                                diferenciaAltitudTMA =
+                                    Math.Abs(hSeguidor - hPrecedente);
+                            }
+                        }
+
+                        // =====================================
+                        // 4. INCUMPLIMIENTOS RADAR
+                        // =====================================
+
+                        bool? incumpleRadarTWR = null;
+                        bool? incumpleRadarTMA = null;
+
+                        if (double.IsFinite(avion.separacionTWR))
+                        {
+                            incumpleRadarTWR =
+                                avion.separacionTWR < 3.0;
+                        }
+
+                        if (double.IsFinite(distanciaTMA))
+                        {
+                            incumpleRadarTMA =
+                                distanciaTMA < 3.0;
+                        }
+
+                        // =====================================
+                        // 5. TIEMPO ENTRE DESPEGUES
+                        // =====================================
+
+                        double tiempoEntreDespegues = double.NaN;
+
+                        if (precedente != null &&
+                            double.IsFinite(precedente.atot) &&
+                            double.IsFinite(seguidor.atot))
+                        {
+                            tiempoEntreDespegues =
+                                seguidor.atot - precedente.atot;
+                        }
+
+                        // =====================================
+                        // 6. RESULTADOS LoA
+                        // =====================================
+
+                        ResultadoLoAP3 loa = null;
+
+                        resultadosLoAP3.TryGetValue(
+                            seguidor, out loa);
+
+                        bool? incumpleLoA = loa?.incumple;
+                        bool? mismaAgrupacionSID = loa?.mismaSID;
+
+                        double minimoLoA = loa != null
+                            ? loa.minimaNM
+                            : double.NaN;
+
+                        // =====================================
+                        // 7. CREAR FILA DEL CSV
+                        // =====================================
+
+                        Dictionary<string, string> fila =
+                            new Dictionary<string, string>
+                            {
+                                ["Precedente"] =
+                                ExportarResultadosP3.Texto(
+                                    precedente?.indicativo),
+
+                                ["Seguidor"] =
+                                ExportarResultadosP3.Texto(
+                                    seguidor.indicativo),
+
+                                ["ATOT precedente"] =
+                                ExportarResultadosP3.Hora(
+                                    precedente?.atot ?? double.NaN),
+
+                                ["ATOT seguidor"] =
+                                ExportarResultadosP3.Hora(
+                                    seguidor.atot),
+
+                                ["ToD TWR"] =
+                                ExportarResultadosP3.Hora(tiempoTWR),
+
+                                ["Distancia TWR NM"] =
+                                ExportarResultadosP3.Numero(
+                                    avion.separacionTWR),
+
+                                ["Diferencia altitud TWR ft"] =
+                                ExportarResultadosP3.Numero(
+                                    avion.diferenciaAltitudTWR, 0),
+
+                                ["ToD minima TMA"] =
+                                ExportarResultadosP3.Hora(tiempoTMA),
+
+                                ["Distancia minima TMA NM"] =
+                                ExportarResultadosP3.Numero(distanciaTMA),
+
+                                ["Diferencia altitud minima TMA ft"] =
+                                ExportarResultadosP3.Numero(
+                                    diferenciaAltitudTMA, 0),
+
+                                ["Inc Radar TWR"] =
+                                ExportarResultadosP3.Indicador(
+                                    incumpleRadarTWR),
+
+                                ["Inc Radar TMA"] =
+                                ExportarResultadosP3.Indicador(
+                                    incumpleRadarTMA),
+
+                                ["Perdida operativa Radar TWR"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.perdidaRadarTWR),
+
+                                ["Perdida operativa Radar TMA"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.perdidaRadarTMA),
+
+                                ["Tiempo entre DEP s"] =
+                                ExportarResultadosP3.Numero(
+                                    tiempoEntreDespegues, 1),
+
+                                ["Tiempo minimo estela TWR s"] =
+                                ExportarResultadosP3.Numero(
+                                    avion.tiempoMinimoEstelaTWR, 1),
+
+                                ["Min distancia estela TWR NM"] =
+                                ExportarResultadosP3.Numero(
+                                    avion.minimaEstelaTWR),
+
+                                ["Inc Estela TWR distancia"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.incumplimientoEstelaTWR),
+
+                                ["Inc Estela TWR tiempo"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.incumplimientoTiempoEstelaTWR),
+
+                                ["Min distancia estela TMA NM"] =
+                                ExportarResultadosP3.Numero(
+                                    avion.minimaEstelaTMA),
+
+                                ["Inc Estela TMA distancia"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.incumplimientoEstelaTMA),
+
+                                ["Perdida operativa Estela TWR"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.perdidaEstelaTWR),
+
+                                ["Perdida operativa Estela TMA"] =
+                                ExportarResultadosP3.Indicador(
+                                    avion.perdidaEstelaTMA),
+
+                                ["Inc LoA"] =
+                                ExportarResultadosP3.Indicador(
+                                    incumpleLoA),
+
+                                ["Min distancia LoA NM"] =
+                                ExportarResultadosP3.Numero(minimoLoA),
+
+                                ["Misma agrupacion SID"] =
+                                ExportarResultadosP3.Indicador(
+                                    mismaAgrupacionSID),
+
+                                ["Estela precedente"] =
+                                ExportarResultadosP3.Texto(
+                                    precedente?.estela),
+
+                                ["Estela seguidor"] =
+                                ExportarResultadosP3.Texto(
+                                    seguidor.estela),
+
+                                ["Clasificacion LoA precedente"] =
+                                ExportarResultadosP3.Texto(
+                                    loa?.categoriaPrecedente),
+
+                                ["Clasificacion LoA seguidor"] =
+                                ExportarResultadosP3.Texto(
+                                    loa?.categoriaSeguidor),
+
+                                ["SID precedente"] =
+                                ExportarResultadosP3.Texto(
+                                    precedente?.sidDetectada),
+
+                                ["SID seguidor"] =
+                                ExportarResultadosP3.Texto(
+                                    seguidor.sidDetectada),
+
+                                ["Grupo SID precedente"] =
+                                ExportarResultadosP3.Texto(
+                                    precedente?.grupoSID),
+
+                                ["Grupo SID seguidor"] =
+                                ExportarResultadosP3.Texto(
+                                    seguidor.grupoSID),
+
+                                ["Modelo precedente"] =
+                                ExportarResultadosP3.Texto(
+                                    precedente?.tipoAeronave),
+
+                                ["Modelo seguidor"] =
+                                ExportarResultadosP3.Texto(
+                                    seguidor.tipoAeronave),
+
+                                ["Runway DEP"] =
+                                ExportarResultadosP3.Texto(
+                                    seguidor.pistaDespegue),
+
+                                ["Estado separacion"] =
+                                ExportarResultadosP3.Texto(
+                                    avion.motivoSeparacionP3),
+
+                                ["Estado estela"] =
+                                ExportarResultadosP3.Texto(
+                                    avion.estadoEstelaP3),
+
+                                ["Estado LoA"] =
+                                ExportarResultadosP3.Texto(
+                                    loa?.estado)
+                            };
+
+                        filas.Add(fila);
+                    }
+
+                    // =====================================
+                    // 8. ESCRIBIR EL ARCHIVO
+                    // =====================================
+
+                    ExportarResultadosP3.Exportar(
+                        guardar.FileName, filas);
+
+                    MessageBox.Show(
+                        "Resultados P3 exportados correctamente.\n\n" +
+                        "Parejas exportadas: " + filas.Count +
+                        "\nArchivo: " + guardar.FileName,
+                        "Exportación P3",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        "Error al exportar el CSV:\n" + ex.Message,
+                        "Exportación P3",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
         }
 
     }

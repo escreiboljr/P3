@@ -83,6 +83,7 @@
             labelHeatmap0 = new Label();
             pictureBoxEscalaHeatmap = new PictureBox();
             labelDensTraf = new Label();
+            exportarResultadosToolStripMenuItem = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)trackBarVelSimulacion).BeginInit();
             ((System.ComponentModel.ISupportInitialize)dataGridAviones).BeginInit();
@@ -231,7 +232,7 @@
             // 
             // p3ToolStripMenuItem
             // 
-            p3ToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { cargarPlanDeVueloToolStripMenuItem });
+            p3ToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { cargarPlanDeVueloToolStripMenuItem, exportarResultadosToolStripMenuItem });
             p3ToolStripMenuItem.Font = new Font("Segoe UI", 12F);
             p3ToolStripMenuItem.Name = "p3ToolStripMenuItem";
             p3ToolStripMenuItem.Size = new Size(40, 25);
@@ -658,6 +659,13 @@
             labelDensTraf.TabIndex = 0;
             labelDensTraf.Text = "Densidad de trafico";
             // 
+            // exportarResultadosToolStripMenuItem
+            // 
+            exportarResultadosToolStripMenuItem.Name = "exportarResultadosToolStripMenuItem";
+            exportarResultadosToolStripMenuItem.Size = new Size(224, 26);
+            exportarResultadosToolStripMenuItem.Text = "Exportar resultados ";
+            exportarResultadosToolStripMenuItem.Click += exportarResultadosToolStripMenuItem_Click;
+            // 
             // MenuSimulacion
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -772,5 +780,6 @@
         private Label labeldensidad;
         private ToolStripMenuItem p3ToolStripMenuItem;
         private ToolStripMenuItem cargarPlanDeVueloToolStripMenuItem;
+        private ToolStripMenuItem exportarResultadosToolStripMenuItem;
     }
 }

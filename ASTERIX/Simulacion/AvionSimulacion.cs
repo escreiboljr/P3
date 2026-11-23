@@ -30,12 +30,9 @@ namespace Simulacion
         public double altitudPresionFt { get; set; } = double.NaN;
         public double altitudQNHFt { get; set; } = double.NaN;
         public double qnhUtilizado { get; set; } = double.NaN;
-
-        // Atributos del Proyecto 3
         public PlanVueloP3 planVuelo { get; set; }
         public AvionSimulacion avionPrecedente { get; set; }
-        public List<Mensaje> mensajesRadarP3 { get; set; }
-            = new List<Mensaje>();
+        public List<Mensaje> mensajesRadarP3 { get; set; }= new List<Mensaje>();
         public double separacionTWR { get; set; } = double.NaN;
         public double separacionMinimaTMA { get; set; } = double.NaN;
         public double tiempoSeparacionMinimaTMA { get; set; } = double.NaN;
@@ -43,14 +40,17 @@ namespace Simulacion
         public double minimaEstelaTWR { get; set; } = double.NaN;
         public double minimaEstelaTMA { get; set; } = double.NaN;
         public double tiempoMinimoEstelaTWR { get; set; } = double.NaN;
-
         public double tiempoEntreDespeguesP3 { get; set; } = double.NaN;
-
         public bool? incumplimientoEstelaTWR { get; set; } = null;
         public bool? incumplimientoTiempoEstelaTWR { get; set; } = null;
         public bool? incumplimientoEstelaTMA { get; set; } = null;
-
         public string estadoEstelaP3 { get; set; } = "";
+        public double diferenciaAltitudTWR { get; set; } = double.NaN;
+        public bool? perdidaRadarTWR { get; set; } = null;
+        public bool? perdidaRadarTMA { get; set; } = null;
+        public bool? perdidaEstelaTWR { get; set; } = null;
+        public bool? perdidaEstelaTMA { get; set; } = null;
+        public int muestrasAltitudTMA { get; set; } = 0;
 
         public AvionSimulacion()
         {
