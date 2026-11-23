@@ -2943,6 +2943,43 @@ namespace GUI_ASTERIX
                                 out double separacionFinal);
 
                         avion.tiempoSeparacionMinimaTMA = tiempoMinimo;
+                        // Evaluar los mínimos de separación por estela
+                        CalcularIncumplimientoEstelaP3(avion);
+
+                        string minimaTWR = double.IsFinite(avion.minimaEstelaTWR)
+                            ? avion.minimaEstelaTWR.ToString("F1") + " NM"
+                            : "N/A";
+
+                        string minimaTMA = double.IsFinite(avion.minimaEstelaTMA)
+                            ? avion.minimaEstelaTMA.ToString("F1") + " NM"
+                            : "N/A";
+
+                        string incTWR = avion.incumplimientoEstelaTWR.HasValue
+                            ? (avion.incumplimientoEstelaTWR.Value ? "SI" : "NO")
+                            : "N/A";
+
+                        string incTMA = avion.incumplimientoEstelaTMA.HasValue
+                            ? (avion.incumplimientoEstelaTMA.Value ? "SI" : "NO")
+                            : "N/A";
+
+                        string incTiempo = avion.incumplimientoTiempoEstelaTWR.HasValue
+                            ? (avion.incumplimientoTiempoEstelaTWR.Value ? "SI" : "NO")
+                            : "N/A";
+
+                        string infoEstela =
+                            " | Estela precedente: " +
+                            (avion.avionPrecedente?.planVuelo?.estela ?? "-") +
+                            " | Estela seguidor: " +
+                            (avion.planVuelo?.estela ?? "-") +
+                            " | Min TWR: " + minimaTWR +
+                            " | Inc TWR: " + incTWR +
+                            " | Min TMA: " + minimaTMA +
+                            " | Inc TMA: " + incTMA +
+                            " | Inc tiempo: " + incTiempo +
+                            " | Estado estela: " + avion.estadoEstelaP3;
+
+                        resultadoSeparaciones += infoEstela + "\n";
+
 
                         // Comprobar el resultado final
                         if (double.IsFinite(avion.separacionTWR) &&
@@ -3653,7 +3690,7 @@ namespace GUI_ASTERIX
             double separacionMinima = double.MaxValue;
 
             // Calcular también la separación en el instante del cruce
-            bool precedenteEncontrado =
+            /*bool precedenteEncontrado =
                 ObtenerPosicionInterpoladaP3(
                     avion.avionPrecedente,
                     inicioTMA,
@@ -3674,7 +3711,7 @@ namespace GUI_ASTERIX
 
                 comparaciones++;
             }
-
+            */
             // Obtener detecciones posteriores al cruce
             var detecciones = avion.mensajesRadarP3
                 .Where(m =>
@@ -4336,5 +4373,115 @@ namespace GUI_ASTERIX
 
             return false;
         }
+
+        private void CalcularIncumplimientoEstelaP3(
+            AvionSimulacion avion)
+        {
+            if (avion == null)
+                return;
+
+            // Reiniciar resultados
+            avion.minimaEstelaTWR = double.NaN;
+            avion.minimaEstelaTMA = double.NaN;
+            avion.tiempoMinimoEstelaTWR = double.NaN;
+            avion.tiempoEntreDespeguesP3 = double.NaN;
+
+            avion.incumplimientoEstelaTWR = null;
+            avion.incumplimientoTiempoEstelaTWR = null;
+            avion.incumplimientoEstelaTMA = null;
+            avion.estadoEstelaP3 = "NO CALCULADA";
+
+            if (avion.planVuelo == null ||
+                avion.avionPrecedente?.planVuelo == null)
+            {
+                avion.estadoEstelaP3 = "SIN PRECEDENTE";
+                return;
+            }
+
+            PlanVueloP3 planSeguidor = avion.planVuelo;
+            PlanVueloP3 planPrecedente =
+                avion.avionPrecedente.planVuelo;
+
+            // Leer la estela ICAO directamente del Excel
+            string categoriaPrecedente =
+                planPrecedente.estela;
+
+            string categoriaSeguidor =
+                planSeguidor.estela;
+
+            if (!SeparacionesEstela.CategoriaValida(
+                    categoriaPrecedente) ||
+                !SeparacionesEstela.CategoriaValida(
+                    categoriaSeguidor))
+            {
+                avion.estadoEstelaP3 = "CATEGORÍA DESCONOCIDA";
+                return;
+            }
+
+            // Consultar los mínimos del documento
+            double? minimaTWR = SeparacionesEstela.MinimaTWR(
+                categoriaPrecedente, categoriaSeguidor);
+
+            double? minimaTMA = SeparacionesEstela.MinimaTMA(
+                categoriaPrecedente, categoriaSeguidor);
+
+            double? tiempoTWR = SeparacionesEstela.TiempoTWR(
+                categoriaPrecedente, categoriaSeguidor);
+
+            // Si no aparece en las tablas, no aplica estela
+            if (!minimaTWR.HasValue && !minimaTMA.HasValue)
+            {
+                avion.estadoEstelaP3 = "NO APLICA";
+                return;
+            }
+
+            if (minimaTWR.HasValue)
+            {
+                avion.minimaEstelaTWR = minimaTWR.Value;
+
+                // Comparar distancia medida en TWR
+                if (double.IsFinite(avion.separacionTWR))
+                {
+                    avion.incumplimientoEstelaTWR =
+                        avion.separacionTWR < minimaTWR.Value;
+                }
+            }
+
+            // Diferencia entre las horas ATOT del Excel
+            if (double.IsFinite(planSeguidor.atot) &&
+                double.IsFinite(planPrecedente.atot))
+            {
+                avion.tiempoEntreDespeguesP3 =
+                    planSeguidor.atot - planPrecedente.atot;
+            }
+
+            if (tiempoTWR.HasValue)
+            {
+                avion.tiempoMinimoEstelaTWR = tiempoTWR.Value;
+
+                if (double.IsFinite(avion.tiempoEntreDespeguesP3) &&
+                    avion.tiempoEntreDespeguesP3 >= 0)
+                {
+                    avion.incumplimientoTiempoEstelaTWR =
+                        avion.tiempoEntreDespeguesP3 <
+                        tiempoTWR.Value;
+                }
+            }
+
+            if (minimaTMA.HasValue)
+            {
+                avion.minimaEstelaTMA = minimaTMA.Value;
+
+                // Comparar la separación mínima obtenida en TMA
+                if (double.IsFinite(avion.separacionMinimaTMA))
+                {
+                    avion.incumplimientoEstelaTMA =
+                        avion.separacionMinimaTMA < minimaTMA.Value;
+                }
+            }
+
+            avion.estadoEstelaP3 = "EVALUADA";
+        }
+
     }
 }

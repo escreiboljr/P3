@@ -280,6 +280,13 @@ namespace DatosDecod
             this.FL.V = listaBits[0];
             this.FL.G = listaBits[1];
 
+            if (this.FL.V == 1)
+            {
+                this.FL.FL = double.NaN;
+                this.altitudPresionFt = double.NaN;
+                return;
+            }
+
             int raw = ((b1 & 0x3F) << 8) | b2;
 
             if ((raw & 0x2000) != 0)

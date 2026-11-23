@@ -40,6 +40,17 @@ namespace Simulacion
         public double separacionMinimaTMA { get; set; } = double.NaN;
         public double tiempoSeparacionMinimaTMA { get; set; } = double.NaN;
         public string motivoSeparacionP3 { get; set; } = "";
+        public double minimaEstelaTWR { get; set; } = double.NaN;
+        public double minimaEstelaTMA { get; set; } = double.NaN;
+        public double tiempoMinimoEstelaTWR { get; set; } = double.NaN;
+
+        public double tiempoEntreDespeguesP3 { get; set; } = double.NaN;
+
+        public bool? incumplimientoEstelaTWR { get; set; } = null;
+        public bool? incumplimientoTiempoEstelaTWR { get; set; } = null;
+        public bool? incumplimientoEstelaTMA { get; set; } = null;
+
+        public string estadoEstelaP3 { get; set; } = "";
 
         public AvionSimulacion()
         {
